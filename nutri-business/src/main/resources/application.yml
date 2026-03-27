@@ -1,0 +1,83 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: nutri-business
+
+  # ── MySQL ────────────────────────────────────────────────────────────────
+  datasource:
+    url: jdbc:mysql://localhost:3306/nutri_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: nutri_user
+    password: nutri_pass
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQL8Dialect
+
+  # ── Redis ────────────────────────────────────────────────────────────────
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: nutri_redis_pass
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+  # ── RabbitMQ ─────────────────────────────────────────────────────────────
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: nutri_mq
+    password: nutri_mq_pass
+    virtual-host: /
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 1
+
+# ── OSS / MinIO (S3-compatible) ─────────────────────────────────────────────
+oss:
+  endpoint: http://localhost:9000
+  access-key: nutri_oss
+  secret-key: nutri_oss_pass
+  bucket-name: nutri-bucket
+  region: us-east-1       # MinIO ignores region; Aliyun uses e.g. oss-cn-hangzhou
+
+# ── RabbitMQ exchange / queue names ─────────────────────────────────────────
+mq:
+  exchange:
+    food-analysis: nutri.food.analysis.exchange
+  queue:
+    food-analysis-task: nutri.food.analysis.task
+    food-analysis-result: nutri.food.analysis.result
+  routing-key:
+    task: nutri.food.analysis.task
+    result: nutri.food.analysis.result
+
+# ── SpringDoc ────────────────────────────────────────────────────────────────
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+# ── Logging ──────────────────────────────────────────────────────────────────
+logging:
+  level:
+    com.nutriflow: DEBUG
+    org.springframework.amqp: INFO

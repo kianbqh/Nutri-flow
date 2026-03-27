@@ -1,0 +1,98 @@
+version: "3.9"
+
+# ---------------------------------------------------------------------------
+# Nutri-Flow – local development infrastructure
+# ---------------------------------------------------------------------------
+# Services:
+#   mysql      – persistent relational store (user profiles, diet logs)
+#   redis      – session cache & rate-limiting
+#   rabbitmq   – async message bus (business → agent)
+#   minio      – S3-compatible object store (replaces Aliyun OSS locally)
+# ---------------------------------------------------------------------------
+
+services:
+
+  # ── MySQL 8 ─────────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: nutri-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: nutri_root_pass
+      MYSQL_DATABASE: nutri_db
+      MYSQL_USER: nutri_user
+      MYSQL_PASSWORD: nutri_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./nutri-business/src/main/resources/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pnutri_root_pass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: nutri-redis
+    restart: unless-stopped
+    command: redis-server --requirepass nutri_redis_pass
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "nutri_redis_pass", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── RabbitMQ 3 (management UI) ───────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: nutri-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: nutri_mq
+      RABBITMQ_DEFAULT_PASS: nutri_mq_pass
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI  →  http://localhost:15672
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ── MinIO (local OSS / S3-compatible) ────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: nutri-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: nutri_oss
+      MINIO_ROOT_PASSWORD: nutri_oss_pass
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console  →  http://localhost:9001
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+# ---------------------------------------------------------------------------
+# Named volumes
+# ---------------------------------------------------------------------------
+volumes:
+  mysql_data:
+  redis_data:
+  rabbitmq_data:
+  minio_data:

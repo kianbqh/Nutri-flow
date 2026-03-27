@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ImageAnalysisTask",
+  "description": "Message contract for food-image analysis tasks published by nutri-business and consumed by nutri-agent via RabbitMQ.",
+  "type": "object",
+  "required": ["taskId", "userId", "imageUrl", "ossKey", "mealType", "createdAt"],
+  "properties": {
+    "taskId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Globally unique identifier for this analysis task."
+    },
+    "userId": {
+      "type": "string",
+      "description": "The user who uploaded the meal image."
+    },
+    "imageUrl": {
+      "type": "string",
+      "format": "uri",
+      "description": "Pre-signed URL to download the original image from OSS/MinIO."
+    },
+    "ossKey": {
+      "type": "string",
+      "description": "Object key within the OSS bucket (used for referencing without re-signing)."
+    },
+    "mealType": {
+      "type": "string",
+      "enum": ["BREAKFAST", "LUNCH", "DINNER", "SNACK"],
+      "description": "Meal category of the uploaded image."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when the task was created."
+    },
+    "userContext": {
+      "type": "object",
+      "description": "Optional snapshot of user preferences and health goals passed at publish time.",
+      "properties": {
+        "dietaryRestrictions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "e.g. ['gluten-free', 'vegan']"
+        },
+        "healthGoal": {
+          "type": "string",
+          "enum": ["WEIGHT_LOSS", "MUSCLE_GAIN", "MAINTENANCE", "GENERAL_HEALTH"],
+          "description": "Primary health objective of the user."
+        },
+        "dailyCalorieTarget": {
+          "type": "integer",
+          "minimum": 500,
+          "maximum": 5000,
+          "description": "Target daily calorie intake in kcal."
+        }
+      }
+    },
+    "callbackRoutingKey": {
+      "type": "string",
+      "description": "Optional RabbitMQ routing key for the result to be returned to nutri-business."
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "taskId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "userId": "user_001",
+      "imageUrl": "http://localhost:9000/nutri-bucket/meals/user_001/lunch_20260327.jpg?X-Amz-Signature=...",
+      "ossKey": "meals/user_001/lunch_20260327.jpg",
+      "mealType": "LUNCH",
+      "createdAt": "2026-03-27T12:00:00Z",
+      "userContext": {
+        "dietaryRestrictions": ["dairy-free"],
+        "healthGoal": "WEIGHT_LOSS",
+        "dailyCalorieTarget": 1800
+      },
+      "callbackRoutingKey": "nutri.business.task.result"
+    }
+  ]
+}
