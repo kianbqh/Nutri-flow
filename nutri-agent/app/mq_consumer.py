@@ -9,11 +9,14 @@ Dead-letter handling
 Messages that fail more than MAX_RETRIES times are rejected (not requeued)
 so RabbitMQ routes them to the dead-letter exchange/queue if one is declared.
 The retry count is tracked in the message header ``x-nutri-retry-count``.
+
+Important: RabbitMQ does NOT auto-increment headers on requeue.
+To persist the counter we ACK the original message and re-publish a new
+message to the same queue carrying the incremented header value.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 
@@ -41,26 +44,37 @@ class ConsumerSettings(BaseSettings):
 _settings = ConsumerSettings()
 
 
-async def _handle_message(message: AbstractIncomingMessage) -> None:
+async def _handle_message(
+    message: AbstractIncomingMessage,
+    channel: aio_pika.abc.AbstractChannel,
+) -> None:
     """Process a single food-analysis task message.
 
-    On unrecoverable failure the message is rejected (dead-lettered) after
-    MAX_RETRIES attempts, preventing infinite redelivery loops.
+    Retry strategy
+    ──────────────
+    * On failure, ACK the original message and publish a new copy with
+      ``x-nutri-retry-count`` incremented by 1.  This guarantees the
+      counter actually persists across deliveries (``reject(requeue=True)``
+      would leave the header unchanged, causing an infinite loop).
+    * After MAX_RETRIES attempts the message is dead-lettered via
+      ``reject(requeue=False)``.
     """
-    # Determine current retry count from message headers
-    headers: dict = message.headers or {}
+    headers: dict = dict(message.headers or {})
     retry_count: int = int(headers.get("x-nutri-retry-count", 0))
 
     # Parse body
     try:
         body = json.loads(message.body.decode())
     except json.JSONDecodeError as exc:
-        logger.error("Invalid JSON in message, rejecting: %s", exc)
+        logger.error("Invalid JSON in message, rejecting without requeue: %s", exc)
         await message.reject(requeue=False)
         return
 
     task_id: str = body.get("taskId", "unknown")
-    logger.info("Received analysis task: task_id=%s (attempt %d/%d)", task_id, retry_count + 1, MAX_RETRIES)
+    logger.info(
+        "Received analysis task: task_id=%s (attempt %d/%d)",
+        task_id, retry_count + 1, MAX_RETRIES,
+    )
 
     initial_state: AgentState = {
         "task_id": task_id,
@@ -69,7 +83,6 @@ async def _handle_message(message: AbstractIncomingMessage) -> None:
         "meal_type": body.get("mealType", ""),
         "callback_routing_key": body.get("callbackRoutingKey"),
         "user_context": body.get("userContext"),
-        # Intermediate fields – initialised as None
         "user_memory": None,
         "segmentation_result": None,
         "rag_context": None,
@@ -85,19 +98,31 @@ async def _handle_message(message: AbstractIncomingMessage) -> None:
             "OK" if final_state.get("advice_report") else "NO_ADVICE",
         )
         await message.ack()
+
     except Exception as exc:
         logger.exception("Graph execution failed for task_id=%s: %s", task_id, exc)
+
         if retry_count + 1 >= MAX_RETRIES:
             logger.error(
-                "task_id=%s exceeded max retries (%d), dead-lettering message",
-                task_id,
-                MAX_RETRIES,
+                "task_id=%s exceeded max retries (%d), dead-lettering",
+                task_id, MAX_RETRIES,
             )
             await message.reject(requeue=False)
         else:
-            # Requeue for retry; increment counter in headers
-            logger.warning("Requeueing task_id=%s (retry %d)", task_id, retry_count + 1)
-            await message.reject(requeue=True)
+            # ACK the original so it leaves the queue, then publish a fresh
+            # copy with the incremented retry counter in the headers.
+            new_retry = retry_count + 1
+            logger.warning("Scheduling retry %d for task_id=%s", new_retry, task_id)
+            await message.ack()
+            await channel.default_exchange.publish(
+                aio_pika.Message(
+                    body=message.body,
+                    headers={**headers, "x-nutri-retry-count": new_retry},
+                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+                    content_type="application/json",
+                ),
+                routing_key=_settings.mq_task_queue,
+            )
 
 
 async def start_consumer() -> None:
@@ -121,4 +146,5 @@ async def start_consumer() -> None:
         logger.info("Waiting for messages on queue: %s", _settings.mq_task_queue)
         async with queue.iterator() as queue_iter:
             async for message in queue_iter:
-                await _handle_message(message)
+                await _handle_message(message, channel)
+

@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS `users` (
   `health_goal`  VARCHAR(32)  DEFAULT 'GENERAL_HEALTH',
   `daily_calorie_target` INT DEFAULT 2000,
   `dietary_restrictions` JSON DEFAULT NULL,
+  `height_cm`    SMALLINT     DEFAULT NULL COMMENT 'Body height in cm',
+  `weight_kg`    DECIMAL(4,1) DEFAULT NULL COMMENT 'Body weight in kg (max 999.9)',
+  `gender`       VARCHAR(10)  DEFAULT NULL COMMENT 'MALE | FEMALE | OTHER',
   `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
@@ -31,6 +34,7 @@ CREATE TABLE IF NOT EXISTS `diet_logs` (
   `analysis_result` JSON DEFAULT NULL COMMENT 'AI analysis result payload',
   `logged_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_task_id` (`task_id`),
   KEY `idx_user_logged` (`user_id`, `logged_at`),
   CONSTRAINT `fk_diet_log_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

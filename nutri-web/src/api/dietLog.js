@@ -25,3 +25,13 @@ export async function uploadMealImage(file, mealType) {
   })
   return data
 }
+
+/**
+ * Poll the analysis status for a given task.
+ * @param {string} taskId
+ * @returns {Promise<{taskId: string, status: 'PENDING'|'COMPLETED'|'FAILED', analysisResult: object|null}>}
+ */
+export async function getTaskStatus(taskId) {
+  const { data } = await api.get(`/diet-logs/${taskId}/status`)
+  return data
+}

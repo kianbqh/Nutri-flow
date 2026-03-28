@@ -50,6 +50,11 @@
         {{ foodStore.isLoading ? '分析中…' : '开始分析' }}
       </button>
 
+      <!-- Polling progress indicator -->
+      <p v-if="foodStore.status === 'PENDING'" class="polling-hint">
+        ⏳ AI 正在分析，通常需要 5–15 秒，请稍候…
+      </p>
+
       <p v-if="foodStore.error" class="error-msg">{{ foodStore.error }}</p>
     </div>
 
@@ -101,7 +106,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onBeforeUnmount } from 'vue'
 import MaskCanvas from '@/components/MaskCanvas.vue'
 import { useFoodStore } from '@/stores/food'
 
@@ -131,8 +136,12 @@ function setFile(file) {
 
 async function analyse() {
   if (!selectedFile.value) return
+  // uploadAndAnalyse now automatically starts polling after a successful upload
   await foodStore.uploadAndAnalyse(selectedFile.value, mealType.value)
 }
+
+// Stop polling if the user navigates away before the result arrives
+onBeforeUnmount(() => foodStore.stopPolling())
 </script>
 
 <style scoped>
@@ -220,6 +229,12 @@ async function analyse() {
 
 .error-msg {
   color: #e53935;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.polling-hint {
+  color: #ff8f00;
   margin-top: 0.5rem;
   font-size: 0.9rem;
 }

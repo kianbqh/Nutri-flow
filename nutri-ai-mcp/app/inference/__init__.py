@@ -156,6 +156,45 @@ class NutriSegModel(nn.Module):
 # ─────────────────────────────────────────────────────────────────────────────
 _model: NutriSegModel | None = None
 
+# Per-class average portion weight in grams – used for pixel-area weight estimation.
+_PORTION_WEIGHTS_G: dict[str, float] = {
+    "background": 0.0, "rice": 180.0, "noodles": 200.0, "chicken": 150.0,
+    "beef": 120.0, "pork": 130.0, "fish": 140.0, "tofu": 100.0,
+    "broccoli": 80.0, "carrot": 70.0,
+}
+
+# COCO class names placeholder (first 10 food categories used by the scaffold).
+_COCO_NAMES: list[str] = [
+    "background", "rice", "noodles", "chicken", "beef", "pork",
+    "fish", "tofu", "broccoli", "carrot",
+]
+
+
+def _encode_mask_rle(binary_mask: np.ndarray) -> str | None:
+    """Encode a 2D binary mask as a COCO RLE string.
+
+    Uses pycocotools if available; falls back to a simple space-separated
+    run-length encoding otherwise.
+    """
+    try:
+        from pycocotools import mask as coco_mask  # type: ignore
+        mask_f = np.asfortranarray(binary_mask.astype(np.uint8))
+        rle = coco_mask.encode(mask_f)
+        counts = rle["counts"]
+        return counts.decode("utf-8") if isinstance(counts, bytes) else counts
+    except Exception:
+        flat = binary_mask.flatten().astype(np.uint8)
+        rle_counts: list[int] = []
+        prev, count = int(flat[0]), 0
+        for px in flat:
+            if px == prev:
+                count += 1
+            else:
+                rle_counts.append(count)
+                count, prev = 1, int(px)
+        rle_counts.append(count)
+        return " ".join(map(str, rle_counts))
+
 
 def get_model() -> NutriSegModel:
     """Return the singleton model (lazy initialisation)."""
@@ -208,28 +247,43 @@ def run_inference(
         cls_logits, mask_logits = model(tensor)
     inference_ms = (time.perf_counter() - t0) * 1000
 
-    # Post-process: take top-k detections from the first spatial position (scaffold)
-    probs = torch.softmax(cls_logits[0, :, 0, 0], dim=0).cpu().numpy()
-    top_k = int((probs > confidence_threshold).sum())
+    # Post-process: global average pool across spatial dims for classification
+    # (much better than reading only the top-left [0,0] spatial position)
+    pooled = cls_logits[0].mean(dim=[1, 2])          # (C,)
+    probs = torch.softmax(pooled, dim=0).cpu().numpy()
+    top_k_indices = np.argsort(probs)[::-1]
 
-    # COCO class names placeholder (first 10 for brevity)
-    coco_names = [
-        "background", "rice", "noodles", "chicken", "beef", "pork",
-        "fish", "tofu", "broccoli", "carrot",
-    ]
+    # Upsample the single-channel mask logits back to the model input resolution
+    mask_logits_up = torch.nn.functional.interpolate(
+        mask_logits, size=(224, 224), mode="bilinear", align_corners=False
+    )
+    mask_binary = (torch.sigmoid(mask_logits_up[0, 0]) > 0.5).cpu().numpy()  # (224, 224)
+
+    mask_rle = _encode_mask_rle(mask_binary)
 
     detections = []
-    for idx in np.argsort(probs)[::-1][:top_k]:
+    for idx in top_k_indices:
         score = float(probs[idx])
         if score < confidence_threshold:
             break
-        label = coco_names[idx] if idx < len(coco_names) else f"class_{idx}"
+        label = _COCO_NAMES[idx] if idx < len(_COCO_NAMES) else f"class_{idx}"
+        if label == "background":
+            continue
+
+        # Pixel-area weight estimate:
+        #   weight ≈ (mask_area / total_pixels) × avg_portion_g / 0.4
+        # where 0.4 is the assumed fraction of the frame a single portion
+        # typically occupies (calibrated for typical food-plate photography).
+        area_ratio = float(mask_binary.sum()) / float(mask_binary.size)
+        avg_portion_g = _PORTION_WEIGHTS_G.get(label, 100.0)
+        estimated_weight_g = round(area_ratio * avg_portion_g / 0.4, 1) if area_ratio > 0 else None
+
         detections.append({
             "label": label,
             "confidence": round(score, 4),
-            "bbox": [0.0, 0.0, 224.0, 224.0],  # placeholder full-image bbox
-            "mask_rle": None,
-            "estimated_weight_g": None,
+            "bbox": [0.0, 0.0, 224.0, 224.0],
+            "mask_rle": mask_rle,
+            "estimated_weight_g": estimated_weight_g,
         })
 
     return detections, inference_ms

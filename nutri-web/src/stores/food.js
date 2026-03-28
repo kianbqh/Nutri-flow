@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { uploadMealImage } from '@/api/dietLog'
+import { uploadMealImage, getTaskStatus } from '@/api/dietLog'
+
+// ── Polling configuration ─────────────────────────────────────────────────────
+const POLL_INTERVAL_MS = 3_000    // check every 3 s
+const POLL_TIMEOUT_MS  = 300_000  // give up after 5 min
 
 /**
  * Pinia store for food analysis state.
@@ -9,6 +13,7 @@ import { uploadMealImage } from '@/api/dietLog'
  *  - track upload / analysis status
  *  - store segmentation masks and detected food items
  *  - expose computed totals (calories, macros)
+ *  - manage status polling lifecycle
  */
 export const useFoodStore = defineStore('food', () => {
   // ── State ──────────────────────────────────────────────────────────────
@@ -19,6 +24,10 @@ export const useFoodStore = defineStore('food', () => {
   const masks = ref([])        // array of { label, color, rleData, bbox }
   const adviceReport = ref(null)
   const error = ref(null)
+
+  /** Internal polling timer handle */
+  let _pollTimer = null
+  let _pollStart = 0
 
   // ── Getters ────────────────────────────────────────────────────────────
   const totalCalories = computed(() =>
@@ -33,6 +42,7 @@ export const useFoodStore = defineStore('food', () => {
 
   /**
    * Upload a meal image and dispatch an analysis task.
+   * Automatically starts polling for the result.
    * @param {File} file
    * @param {string} mealType - BREAKFAST | LUNCH | DINNER | SNACK
    */
@@ -45,6 +55,7 @@ export const useFoodStore = defineStore('food', () => {
       const response = await uploadMealImage(file, mealType)
       taskId.value = response.taskId
       status.value = 'PENDING'
+      startPolling(response.taskId)
     } catch (err) {
       error.value = err.message || 'Upload failed'
       status.value = 'FAILED'
@@ -52,8 +63,51 @@ export const useFoodStore = defineStore('food', () => {
   }
 
   /**
-   * Called when the analysis result arrives (e.g. via polling or WebSocket).
-   * @param {object} result
+   * Begin polling the status endpoint every POLL_INTERVAL_MS milliseconds.
+   * Stops automatically when status becomes COMPLETED or FAILED, or after
+   * POLL_TIMEOUT_MS to prevent memory leaks.
+   * @param {string} id - taskId to poll
+   */
+  function startPolling(id) {
+    stopPolling()
+    _pollStart = Date.now()
+
+    _pollTimer = setInterval(async () => {
+      if (Date.now() - _pollStart > POLL_TIMEOUT_MS) {
+        stopPolling()
+        error.value = '分析超时，请稍后刷新页面重试'
+        status.value = 'FAILED'
+        return
+      }
+
+      try {
+        const result = await getTaskStatus(id)
+        if (result.status === 'COMPLETED' && result.analysisResult) {
+          stopPolling()
+          applyAnalysisResult(result.analysisResult)
+        } else if (result.status === 'FAILED') {
+          stopPolling()
+          error.value = result.analysisResult?.error || '分析失败'
+          status.value = 'FAILED'
+        }
+      } catch (err) {
+        // Network hiccup – keep polling; persistent errors will hit the timeout
+        console.warn('[nutri-flow] poll error:', err.message)
+      }
+    }, POLL_INTERVAL_MS)
+  }
+
+  /** Cancel any active polling timer. */
+  function stopPolling() {
+    if (_pollTimer !== null) {
+      clearInterval(_pollTimer)
+      _pollTimer = null
+    }
+  }
+
+  /**
+   * Called when the analysis result arrives from the status endpoint.
+   * @param {object} result - full analysisResult JSON
    */
   function applyAnalysisResult(result) {
     detectedItems.value = result.segmentationResult?.detected_items ?? []
@@ -68,6 +122,7 @@ export const useFoodStore = defineStore('food', () => {
   }
 
   function reset() {
+    stopPolling()
     taskId.value = null
     status.value = 'IDLE'
     previewUrl.value = null
@@ -88,6 +143,8 @@ export const useFoodStore = defineStore('food', () => {
     totalCalories,
     isLoading,
     uploadAndAnalyse,
+    startPolling,
+    stopPolling,
     applyAnalysisResult,
     reset,
   }

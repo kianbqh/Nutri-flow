@@ -32,6 +32,16 @@ public class User {
     @Column(name = "dietary_restrictions", columnDefinition = "json")
     private String dietaryRestrictions;
 
+    /** Optional biometric fields – used for BMR-based calorie personalisation. */
+    @Column(name = "height_cm")
+    private Integer heightCm;
+
+    @Column(name = "weight_kg")
+    private Double weightKg;
+
+    @Column(name = "gender", length = 10)
+    private String gender; // MALE | FEMALE | OTHER
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 

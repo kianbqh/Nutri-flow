@@ -34,9 +34,14 @@ async def segment_meal_image(request: SegmentationRequest) -> SegmentationRespon
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Failed to fetch image: {exc}") from exc
 
-    # 2. Decode to numpy array
+    # 2. Decode to numpy array – cap the long side at 1024 px BEFORE converting
+    #    to numpy to avoid ballooning a 20 MB JPEG into hundreds of MB of RAM.
+    #    The model input is 224×224 anyway, so nothing is lost.
+    MAX_SIDE = 1024
     try:
         pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        if pil_img.width > MAX_SIDE or pil_img.height > MAX_SIDE:
+            pil_img.thumbnail((MAX_SIDE, MAX_SIDE), Image.LANCZOS)
         image_array = np.array(pil_img)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid image data: {exc}") from exc

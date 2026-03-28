@@ -88,6 +88,21 @@ services:
       timeout: 10s
       retries: 5
 
+  # ── ChromaDB (vector store for RAG + user long-term memory) ──────────────
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: nutri-chroma
+    restart: unless-stopped
+    ports:
+      - "8100:8000"   # host:8100 → container:8000
+    volumes:
+      - chroma_data:/chroma/chroma
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
 # ---------------------------------------------------------------------------
 # Named volumes
 # ---------------------------------------------------------------------------
@@ -96,3 +111,4 @@ volumes:
   redis_data:
   rabbitmq_data:
   minio_data:
+  chroma_data:
