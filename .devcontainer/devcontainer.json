@@ -1,0 +1,111 @@
+{
+  // ──────────────────────────────────────────────────────────────────────────
+  // Nutri-Flow – GitHub Codespaces / VS Code devcontainer configuration
+  // ──────────────────────────────────────────────────────────────────────────
+  // This devcontainer launches the full local development stack:
+  //   • Infrastructure services (MySQL, Redis, RabbitMQ, MinIO, ChromaDB)
+  //     are started by docker-compose.yml (see ../docker-compose.yml).
+  //   • The "devcontainer" service defined in docker-compose.devcontainer.yml
+  //     is the actual container VS Code / Codespaces attaches to.
+  //   • All services share the same Docker network, so the application code
+  //     running inside "devcontainer" can reach MySQL as "mysql:3306", Redis
+  //     as "redis:6379", etc.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  "name": "Nutri-Flow Dev",
+
+  // ── Base: merge our two Compose files ────────────────────────────────────
+  "dockerComposeFile": [
+    "../docker-compose.yml",
+    "docker-compose.devcontainer.yml"
+  ],
+  "service": "devcontainer",
+  "workspaceFolder": "/workspaces/Nutri-flow",
+
+  // ── Extra toolchain features ──────────────────────────────────────────────
+  // The universal:2 image already ships Python 3 and Node.js LTS.
+  // We add Java 21 + Maven explicitly because the project requires JDK 21.
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "21",
+      "installMaven": "true",
+      "installGradle": "false"
+    }
+  },
+
+  // ── VS Code extensions & settings ────────────────────────────────────────
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // Java / Spring Boot
+        "vscjava.vscode-java-pack",
+        "vmware.vscode-spring-boot",
+        "vscjava.vscode-spring-initializr",
+        // Vue 3 / JavaScript
+        "Vue.volar",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        // Python
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        // Docker / Compose
+        "ms-azuretools.vscode-docker",
+        // Database & cache helpers
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-mysql",
+        "cweijan.vscode-redis-client",
+        // General utilities
+        "EditorTeam.git-merger",
+        "eamodio.gitlens"
+      ],
+      "settings": {
+        // Point the Java extension at JDK 21 installed by the feature above
+        "java.configuration.runtimes": [
+          {
+            "name": "JavaSE-21",
+            "default": true
+          }
+        ],
+        // Use the system Python that comes with the universal image
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
+      }
+    }
+  },
+
+  // ── Port forwarding ───────────────────────────────────────────────────────
+  "forwardPorts": [
+    3000,   // nutri-web  (Vite dev server)
+    8080,   // nutri-business  (Spring Boot)
+    8000,   // nutri-ai-mcp  (FastAPI / MCP)
+    3306,   // MySQL
+    6379,   // Redis
+    5672,   // RabbitMQ AMQP
+    15672,  // RabbitMQ Management UI
+    9000,   // MinIO S3 API
+    9001,   // MinIO Web Console
+    8100    // ChromaDB  (host-mapped port)
+  ],
+  "portsAttributes": {
+    "3000":  { "label": "nutri-web (Vite)",          "onAutoForward": "notify" },
+    "8080":  { "label": "nutri-business (Spring Boot)", "onAutoForward": "notify" },
+    "8000":  { "label": "nutri-ai-mcp (FastAPI/MCP)", "onAutoForward": "notify" },
+    "3306":  { "label": "MySQL",                     "onAutoForward": "silent" },
+    "6379":  { "label": "Redis",                     "onAutoForward": "silent" },
+    "5672":  { "label": "RabbitMQ AMQP",             "onAutoForward": "silent" },
+    "15672": { "label": "RabbitMQ Management",       "onAutoForward": "silent" },
+    "9000":  { "label": "MinIO S3 API",              "onAutoForward": "silent" },
+    "9001":  { "label": "MinIO Console",             "onAutoForward": "silent" },
+    "8100":  { "label": "ChromaDB",                  "onAutoForward": "silent" }
+  },
+
+  // ── Post-create setup ─────────────────────────────────────────────────────
+  // Delegates to .devcontainer/postCreate.sh which:
+  //   1. Creates .env from .env.example, rewriting service host references
+  //      from "localhost" to Docker Compose service names.
+  //   2. Installs Node.js dependencies for nutri-web.
+  //   3. Installs Python dependencies for nutri-agent and nutri-ai-mcp.
+  "postCreateCommand": "bash .devcontainer/postCreate.sh",
+
+  // Run as the non-root "vscode" user that ships with the universal image
+  "remoteUser": "vscode"
+}

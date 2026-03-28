@@ -1,0 +1,39 @@
+version: "3.9"
+
+# ---------------------------------------------------------------------------
+# Nutri-Flow – devcontainer overlay
+# ---------------------------------------------------------------------------
+# This file is merged with ../docker-compose.yml when opening the repo in
+# GitHub Codespaces or a local VS Code devcontainer.  It adds one extra
+# service ("devcontainer") that contains all the development tools (Java 21,
+# Node.js, Python 3) and is connected to the same Docker network as the
+# infrastructure services so that it can reach MySQL, Redis, RabbitMQ,
+# MinIO and ChromaDB by their service names.
+# ---------------------------------------------------------------------------
+
+services:
+
+  devcontainer:
+    image: mcr.microsoft.com/devcontainers/universal:2
+    volumes:
+      # Mount the repository root into the workspace folder
+      - ../:/workspaces/Nutri-flow:cached
+    # Keep the container alive; VS Code attaches to it and runs commands here
+    command: sleep infinity
+    environment:
+      # Make Docker available inside the container (Docker-in-Docker is
+      # provided by the universal image's feature set at build time)
+      - DOCKER_BUILDKIT=1
+    # Ensure this service starts after the infra services so that the
+    # postCreateCommand can reach them immediately
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      chroma:
+        condition: service_healthy
