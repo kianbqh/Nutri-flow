@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class LLMSettings(BaseSettings):
     moonshot_api_key: str = ""
     moonshot_base_url: str = "https://api.moonshot.cn/v1"
-    llm_model: str = "moonshot-v1-8k"
+    llm_model: str = "kimi-k2-5"
     llm_temperature: float = 0.3
 
     class Config:
