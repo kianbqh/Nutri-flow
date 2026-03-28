@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 
 
 class LLMSettings(BaseSettings):
-    openai_api_key: str = ""
-    openai_base_url: str = "https://api.openai.com/v1"
-    llm_model: str = "gpt-4o-mini"
+    moonshot_api_key: str = ""
+    moonshot_base_url: str = "https://api.moonshot.cn/v1"
+    llm_model: str = "kimi-k2-5"
     llm_temperature: float = 0.3
 
     class Config:
@@ -87,8 +87,8 @@ async def generate_advice(state: "AgentState") -> dict:
         llm = ChatOpenAI(
             model=_settings.llm_model,
             temperature=_settings.llm_temperature,
-            api_key=_settings.openai_api_key or None,
-            base_url=_settings.openai_base_url,
+            api_key=_settings.moonshot_api_key or None,
+            base_url=_settings.moonshot_base_url,
         )
         chain = ADVICE_PROMPT | llm
         response = await chain.ainvoke({
