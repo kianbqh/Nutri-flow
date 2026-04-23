@@ -17,6 +17,8 @@ from pydantic_settings import BaseSettings
 
 if TYPE_CHECKING:
     from app.graph import AgentState
+else:
+    AgentState = dict
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +66,13 @@ def _build_segmentation_summary(segmentation_result: dict | None) -> str:
         return "No food items were detected in the image."
     lines = []
     for item in items:
-        label = item.get("label", "unknown")
-        conf = item.get("confidence", 0.0)
+        label = item.get("label") or item.get("class_name") or item.get("display_name") or "unknown"
+        conf = item.get("confidence")
+        if conf is None:
+            conf = item.get("confidence_score", 0.0)
         weight = item.get("estimated_weight_g")
+        if weight is None:
+            weight = item.get("weight_g")
         weight_str = f"{weight:.0f}g" if weight else "weight unknown"
         lines.append(f"- {label} (confidence: {conf:.0%}, {weight_str})")
     return "\n".join(lines)
@@ -82,6 +88,26 @@ async def generate_advice(state: "AgentState") -> dict:
     rag_context = state.get("rag_context") or "Not available."
     user_memory = state.get("user_memory") or "No history available."
     user_context_str = json.dumps(state.get("user_context") or {}, ensure_ascii=False)
+    workflow_mode = state.get("workflow_mode") or "FULL"
+    workflow_trace = list(state.get("workflow_trace") or [])
+
+    if workflow_mode == "CALORIE_ONLY":
+        goal = (state.get("user_context") or {}).get("healthGoal", "GENERAL_HEALTH")
+        goal_hint = {
+            "WEIGHT_LOSS": "当前目标是减脂，建议优先控制总热量并减少高糖高油食物。",
+            "MUSCLE_GAIN": "当前目标是增肌，建议下一餐增加优质蛋白并保证主食摄入。",
+            "MAINTENANCE": "当前目标是体重维持，建议三餐规律并维持均衡搭配。",
+            "GENERAL_HEALTH": "建议保持蔬菜、蛋白与主食搭配，避免长期单一饮食。",
+        }.get(goal, "建议保持食物多样性，控制总热量。")
+
+        fallback = (
+            "本次图像识别结果较少，已按热量管理模式提供基础建议：\n"
+            f"1) {goal_hint}\n"
+            "2) 可尝试在更明亮环境下重拍，提升识别稳定性。\n"
+            "3) 结果为估算值，请结合实际份量调整。"
+        )
+        workflow_trace.append("generate_advice: CALORIE_ONLY fallback advice generated")
+        return {"advice_report": fallback, "workflow_trace": workflow_trace}
 
     try:
         llm = ChatOpenAI(
@@ -98,11 +124,22 @@ async def generate_advice(state: "AgentState") -> dict:
             "user_context": user_context_str,
         })
         advice_report: str = response.content
+        workflow_trace.append("generate_advice: FULL workflow advice generated successfully")
     except Exception as exc:
         logger.error("LLM advice generation failed: %s", exc)
+        goal = (state.get("user_context") or {}).get("healthGoal", "GENERAL_HEALTH")
+        goal_hint = {
+            "WEIGHT_LOSS": "当前目标是减脂，建议下一餐减少主食分量并增加蔬菜占比。",
+            "MUSCLE_GAIN": "当前目标是增肌，建议下一餐补充优质蛋白并保持适量碳水。",
+            "MAINTENANCE": "当前目标是体重维持，建议控制总量并保持三餐规律。",
+            "GENERAL_HEALTH": "建议保持食物多样性，少油少盐，注意饮水。",
+        }.get(goal, "建议保持食物多样性，控制总热量。")
         advice_report = (
-            f"Unable to generate personalised advice at this time. "
-            f"Detected items: {segmentation_summary}"
+            "暂时无法调用大模型服务，已为你提供基础建议：\n"
+            f"1) {goal_hint}\n"
+            "2) 本餐尽量做到主食、蛋白、蔬菜搭配。\n"
+            "3) 若本餐偏油或偏咸，下一餐可适当清淡。"
         )
+        workflow_trace.append("generate_advice: LLM unavailable, fallback advice generated")
 
-    return {"advice_report": advice_report}
+    return {"advice_report": advice_report, "workflow_trace": workflow_trace}

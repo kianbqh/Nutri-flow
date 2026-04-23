@@ -2,21 +2,27 @@ package com.nutriflow.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nutriflow.model.DietLog;
+import com.nutriflow.model.User;
 import com.nutriflow.mq.FoodAnalysisProducer;
 import com.nutriflow.mq.ImageAnalysisTaskMessage;
 import com.nutriflow.repository.DietLogRepository;
+import com.nutriflow.repository.UserRepository;
 import com.nutriflow.service.OssService;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -43,6 +49,7 @@ public class DietLogController {
     private final OssService ossService;
     private final FoodAnalysisProducer producer;
     private final DietLogRepository dietLogRepository;
+    private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
 
     /**
@@ -71,6 +78,13 @@ public class DietLogController {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "X-User-Id must be a numeric user ID"));
         }
+
+        if (!userRepository.existsById(userIdLong)) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "error", "User not found. Use X-User-Id=1 for local MVP demo."
+            ));
+        }
+
         DietLog dietLog = new DietLog();
         dietLog.setUserId(userIdLong);
         dietLog.setTaskId(taskId);
@@ -85,6 +99,7 @@ public class DietLogController {
                 .ossKey(ossKey)
                 .mealType(mealType)
                 .createdAt(Instant.now())
+            .userContext(buildUserContext(userIdLong))
                 .callbackRoutingKey("nutri.food.analysis.result")
                 .build();
 
@@ -113,11 +128,18 @@ public class DietLogController {
                     Map<String, Object> resp = new LinkedHashMap<>();
                     resp.put("taskId", log_.getTaskId());
                     boolean completed = log_.getAnalysisResult() != null;
-                    resp.put("status", completed ? "COMPLETED" : "PENDING");
+                    String derivedStatus = completed ? deriveStatus(log_.getAnalysisResult()) : "PENDING";
+                    resp.put("status", derivedStatus);
                     if (completed) {
                         try {
-                            resp.put("analysisResult",
-                                    objectMapper.readValue(log_.getAnalysisResult(), Object.class));
+                            var analysisNode = objectMapper.readTree(log_.getAnalysisResult());
+                            resp.put("analysisResult", objectMapper.treeToValue(analysisNode, Object.class));
+                            if ("FAILED".equalsIgnoreCase(derivedStatus)) {
+                                String errorMsg = extractErrorMessage(analysisNode);
+                                if (errorMsg != null && !errorMsg.isBlank()) {
+                                    resp.put("errorMessage", errorMsg);
+                                }
+                            }
                         } catch (Exception e) {
                             resp.put("analysisResult", log_.getAnalysisResult());
                         }
@@ -134,4 +156,116 @@ public class DietLogController {
                     return ResponseEntity.ok(resp);
                 });
     }
+
+    @GetMapping
+    public ResponseEntity<?> listUserDietLogs(
+            @RequestParam Long userId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        int normalizedPage = Math.max(0, page);
+        int normalizedSize = Math.min(50, Math.max(1, size));
+
+        var pageData = dietLogRepository.findByUserIdOrderByLoggedAtDesc(
+                userId,
+                PageRequest.of(normalizedPage, normalizedSize)
+        );
+
+        List<Map<String, Object>> logs = pageData.getContent().stream().map(log_ -> {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("taskId", log_.getTaskId());
+            item.put("mealType", log_.getMealType());
+            item.put("loggedAt", log_.getLoggedAt().toInstant(ZoneOffset.UTC).toString());
+
+            if (log_.getAnalysisResult() != null) {
+                try {
+                    var json = objectMapper.readTree(log_.getAnalysisResult());
+                    item.put("status", json.path("status").asText("COMPLETED"));
+                    item.put("adviceReport", json.path("adviceReport").asText(null));
+
+                    var segmentation = json.path("segmentationResult");
+                    var items = segmentation.path("detected_items");
+                    item.put("detectedItemsCount", items.isArray() ? items.size() : 0);
+                } catch (Exception e) {
+                    item.put("status", "COMPLETED");
+                    item.put("adviceReport", null);
+                    item.put("detectedItemsCount", 0);
+                }
+            } else {
+                item.put("status", "PENDING");
+                item.put("adviceReport", null);
+                item.put("detectedItemsCount", 0);
+            }
+
+            return item;
+        }).toList();
+
+        return ResponseEntity.ok(Map.of(
+                "content", logs,
+                "page", pageData.getNumber(),
+                "size", pageData.getSize(),
+                "totalElements", pageData.getTotalElements(),
+                "totalPages", pageData.getTotalPages(),
+                "hasNext", pageData.hasNext()
+        ));
+    }
+
+    private ImageAnalysisTaskMessage.UserContext buildUserContext(long userId) {
+        return userRepository.findById(userId)
+                .map(this::toUserContext)
+                .orElse(ImageAnalysisTaskMessage.UserContext.builder()
+                        .dietaryRestrictions(Collections.emptyList())
+                        .healthGoal("GENERAL_HEALTH")
+                        .dailyCalorieTarget(2000)
+                        .build());
+    }
+
+    private ImageAnalysisTaskMessage.UserContext toUserContext(User user) {
+        return ImageAnalysisTaskMessage.UserContext.builder()
+                .dietaryRestrictions(parseDietaryRestrictions(user.getDietaryRestrictions()))
+                .healthGoal(user.getHealthGoal())
+                .dailyCalorieTarget(user.getDailyCalorieTarget())
+                .build();
+    }
+
+    private List<String> parseDietaryRestrictions(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return Collections.emptyList();
+        }
+        try {
+            return objectMapper.readValue(
+                    rawJson,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, String.class)
+            );
+        } catch (Exception e) {
+            log.warn("Unable to parse dietary_restrictions JSON: {}", rawJson);
+            return Collections.emptyList();
+        }
+    }
+
+    private String deriveStatus(String analysisResultJson) {
+        try {
+            return objectMapper.readTree(analysisResultJson).path("status").asText("COMPLETED");
+        } catch (Exception e) {
+            return "COMPLETED";
+        }
+    }
+
+    private String extractErrorMessage(com.fasterxml.jackson.databind.JsonNode analysisNode) {
+        if (analysisNode == null) {
+            return null;
+        }
+        if (analysisNode.hasNonNull("error")) {
+            return analysisNode.get("error").asText();
+        }
+        if (analysisNode.hasNonNull("errorMessage")) {
+            return analysisNode.get("errorMessage").asText();
+        }
+        var segNode = analysisNode.path("segmentationResult");
+        if (!segNode.isMissingNode() && segNode.hasNonNull("error")) {
+            return segNode.get("error").asText();
+        }
+        return null;
+    }
+
 }

@@ -1,5 +1,6 @@
 server:
   port: 8080
+  address: 0.0.0.0
   servlet:
     context-path: /api
 
@@ -9,7 +10,7 @@ spring:
 
   # ── MySQL ────────────────────────────────────────────────────────────────
   datasource:
-    url: jdbc:mysql://localhost:3306/nutri_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://localhost:3307/nutri_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: nutri_user
     password: nutri_pass
     driver-class-name: com.mysql.cj.jdbc.Driver

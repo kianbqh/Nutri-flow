@@ -132,6 +132,14 @@ class NutriSegModel(nn.Module):
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         if self.backbone is not None:
             feats = self.backbone(x)
+            # timm Swin features_only may return channel-last tensors (N, H, W, C).
+            # Convert to channel-first so Conv2d lateral layers can consume them.
+            fixed_feats = []
+            for feat in feats:
+                if feat.ndim == 4 and feat.shape[1] < feat.shape[-1]:
+                    feat = feat.permute(0, 3, 1, 2).contiguous()
+                fixed_feats.append(feat)
+            feats = fixed_feats
         else:
             # Placeholder: produce random feature maps for scaffolding tests
             feats = [torch.randn(x.size(0), c, x.size(2) // s, x.size(3) // s)
@@ -168,6 +176,19 @@ _COCO_NAMES: list[str] = [
     "background", "rice", "noodles", "chicken", "beef", "pork",
     "fish", "tofu", "broccoli", "carrot",
 ]
+
+# Rough nutrition profile per 100g for MVP display.
+_NUTRITION_PER_100G: dict[str, dict[str, float]] = {
+    "rice": {"calories_kcal": 116.0, "protein_g": 2.6, "fat_g": 0.3, "carbs_g": 25.9, "fiber_g": 0.3},
+    "noodles": {"calories_kcal": 138.0, "protein_g": 4.5, "fat_g": 2.1, "carbs_g": 24.8, "fiber_g": 1.2},
+    "chicken": {"calories_kcal": 239.0, "protein_g": 27.0, "fat_g": 14.0, "carbs_g": 0.0, "fiber_g": 0.0},
+    "beef": {"calories_kcal": 250.0, "protein_g": 26.0, "fat_g": 15.0, "carbs_g": 0.0, "fiber_g": 0.0},
+    "pork": {"calories_kcal": 242.0, "protein_g": 27.0, "fat_g": 14.0, "carbs_g": 0.0, "fiber_g": 0.0},
+    "fish": {"calories_kcal": 206.0, "protein_g": 22.0, "fat_g": 12.0, "carbs_g": 0.0, "fiber_g": 0.0},
+    "tofu": {"calories_kcal": 76.0, "protein_g": 8.0, "fat_g": 4.8, "carbs_g": 1.9, "fiber_g": 0.3},
+    "broccoli": {"calories_kcal": 34.0, "protein_g": 2.8, "fat_g": 0.4, "carbs_g": 6.6, "fiber_g": 2.6},
+    "carrot": {"calories_kcal": 41.0, "protein_g": 0.9, "fat_g": 0.2, "carbs_g": 9.6, "fiber_g": 2.8},
+}
 
 
 def _encode_mask_rle(binary_mask: np.ndarray) -> str | None:
@@ -278,12 +299,61 @@ def run_inference(
         avg_portion_g = _PORTION_WEIGHTS_G.get(label, 100.0)
         estimated_weight_g = round(area_ratio * avg_portion_g / 0.4, 1) if area_ratio > 0 else None
 
+        nutrition = None
+        if estimated_weight_g and label in _NUTRITION_PER_100G:
+            ratio = estimated_weight_g / 100.0
+            base = _NUTRITION_PER_100G[label]
+            nutrition = {
+                "calories_kcal": round(base["calories_kcal"] * ratio, 1),
+                "protein_g": round(base["protein_g"] * ratio, 1),
+                "fat_g": round(base["fat_g"] * ratio, 1),
+                "carbs_g": round(base["carbs_g"] * ratio, 1),
+                "fiber_g": round(base["fiber_g"] * ratio, 1),
+            }
+
         detections.append({
             "label": label,
             "confidence": round(score, 4),
             "bbox": [0.0, 0.0, 224.0, 224.0],
             "mask_rle": mask_rle,
             "estimated_weight_g": estimated_weight_g,
+            "nutrition": nutrition,
+        })
+
+    # MVP fallback: if no item passes threshold, still return top-1 non-background
+    # so the app can render a coarse estimate instead of an empty result screen.
+    if not detections:
+        fallback_idx = next((i for i in top_k_indices if i != 0), 1)
+        fallback_score = float(probs[fallback_idx])
+        fallback_label = (
+            _COCO_NAMES[fallback_idx]
+            if fallback_idx < len(_COCO_NAMES)
+            else f"class_{fallback_idx}"
+        )
+
+        area_ratio = float(mask_binary.sum()) / float(mask_binary.size)
+        avg_portion_g = _PORTION_WEIGHTS_G.get(fallback_label, 100.0)
+        estimated_weight_g = round(area_ratio * avg_portion_g / 0.4, 1) if area_ratio > 0 else 100.0
+
+        nutrition = None
+        if estimated_weight_g and fallback_label in _NUTRITION_PER_100G:
+            ratio = estimated_weight_g / 100.0
+            base = _NUTRITION_PER_100G[fallback_label]
+            nutrition = {
+                "calories_kcal": round(base["calories_kcal"] * ratio, 1),
+                "protein_g": round(base["protein_g"] * ratio, 1),
+                "fat_g": round(base["fat_g"] * ratio, 1),
+                "carbs_g": round(base["carbs_g"] * ratio, 1),
+                "fiber_g": round(base["fiber_g"] * ratio, 1),
+            }
+
+        detections.append({
+            "label": fallback_label,
+            "confidence": round(fallback_score, 4),
+            "bbox": [0.0, 0.0, 224.0, 224.0],
+            "mask_rle": mask_rle,
+            "estimated_weight_g": estimated_weight_g,
+            "nutrition": nutrition,
         })
 
     return detections, inference_ms

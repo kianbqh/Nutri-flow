@@ -24,6 +24,15 @@ CREATE TABLE IF NOT EXISTS `users` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Default demo user for MVP end-to-end testing (X-User-Id: 1)
+INSERT INTO `users` (
+  `id`, `username`, `email`, `password_hash`, `health_goal`, `daily_calorie_target`, `dietary_restrictions`
+)
+SELECT
+  1, 'demo_user', 'demo@nutriflow.local', 'demo_hash_placeholder',
+  'WEIGHT_LOSS', 1800, JSON_ARRAY('high_sugar')
+WHERE NOT EXISTS (SELECT 1 FROM `users` WHERE `id` = 1);
+
 -- ── Diet Logs ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `diet_logs` (
   `id`           BIGINT       NOT NULL AUTO_INCREMENT,

@@ -10,11 +10,16 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, List
 
-import chromadb
+try:
+    import chromadb
+except Exception:  # pragma: no cover - optional dependency fallback
+    chromadb = None
 from pydantic_settings import BaseSettings
 
 if TYPE_CHECKING:
     from app.graph import AgentState
+else:
+    AgentState = dict
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +34,13 @@ class ChromaRagSettings(BaseSettings):
 
 
 _settings = ChromaRagSettings()
-_chroma_client: chromadb.HttpClient | None = None
+_chroma_client = None
 
 
-def _get_chroma_client() -> chromadb.HttpClient:
+def _get_chroma_client():
+    if chromadb is None:
+        raise RuntimeError("chromadb is not installed")
+
     global _chroma_client
     if _chroma_client is None:
         _chroma_client = chromadb.HttpClient(
@@ -48,15 +56,15 @@ async def rag_nutrition_lookup(state: "AgentState") -> dict:
 
     Combines retrieved passages into a single context string for the LLM node.
     """
-    segmentation_result: dict = state.get("segmentation_result") or {}
-    detected_items: List[dict] = segmentation_result.get("detected_items", [])
+    labels: List[str] = list(state.get("detected_labels") or [])
+    workflow_trace = list(state.get("workflow_trace") or [])
 
-    if not detected_items:
+    if not labels:
         logger.info("No detected items – skipping RAG lookup")
-        return {"rag_context": "No food items detected in the image."}
+        workflow_trace.append("rag_nutrition_lookup: skipped because no labels were detected")
+        return {"rag_context": "No food items detected in the image.", "workflow_trace": workflow_trace}
 
-    # Build a combined query from detected labels
-    labels: List[str] = [item["label"] for item in detected_items if item.get("label")]
+    # Build a combined query from normalized labels
     query = "Nutritional information and health benefits of: " + ", ".join(labels)
 
     logger.info("RAG lookup for foods: %s", labels)
@@ -67,8 +75,12 @@ async def rag_nutrition_lookup(state: "AgentState") -> dict:
         results = collection.query(query_texts=[query], n_results=5)
         documents: List[str] = results.get("documents", [[]])[0]
         rag_context = "\n\n".join(documents) if documents else "No nutritional data found."
+        workflow_trace.append(
+            f"rag_nutrition_lookup: retrieved {len(documents)} nutrition passages for {len(labels)} labels"
+        )
     except Exception as exc:
         logger.warning("RAG lookup failed: %s", exc)
         rag_context = "Nutritional knowledge base unavailable."
+        workflow_trace.append("rag_nutrition_lookup: nutritional knowledge base unavailable, continue with fallback context")
 
-    return {"rag_context": rag_context}
+    return {"rag_context": rag_context, "workflow_trace": workflow_trace}

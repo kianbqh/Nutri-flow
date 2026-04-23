@@ -13,11 +13,16 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, List
 
-import chromadb
+try:
+    import chromadb
+except Exception:  # pragma: no cover - optional dependency fallback
+    chromadb = None
 from pydantic_settings import BaseSettings
 
 if TYPE_CHECKING:
     from app.graph import AgentState
+else:
+    AgentState = dict
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +37,13 @@ class ChromaSettings(BaseSettings):
 
 
 _settings = ChromaSettings()
-_chroma_client: chromadb.HttpClient | None = None
+_chroma_client = None
 
 
-def _get_chroma_client() -> chromadb.HttpClient:
+def _get_chroma_client():
+    if chromadb is None:
+        raise RuntimeError("chromadb is not installed")
+
     global _chroma_client
     if _chroma_client is None:
         _chroma_client = chromadb.HttpClient(
@@ -54,23 +62,17 @@ async def fetch_user_memory(state: "AgentState") -> dict:
     making the retrieved memories more relevant to the current meal.
     """
     user_id: str = state["user_id"]
+    workflow_trace = list(state.get("workflow_trace") or [])
 
     # Build a targeted query from detected food labels when available
-    segmentation_result: dict = state.get("segmentation_result") or {}
-    detected_items: List[dict] = segmentation_result.get("detected_items", [])
-    food_labels: List[str] = [
-        item["label"] for item in detected_items if item.get("label")
-    ]
+    food_labels: List[str] = list(state.get("detected_labels") or [])
 
     if food_labels:
         query = (
             f"dietary history and preferences for user {user_id} "
             f"regarding foods: {', '.join(food_labels)}"
         )
-        logger.info(
-            "Fetching user memory for user_id=%s with food context: %s",
-            user_id, food_labels,
-        )
+        logger.info("Fetching user memory for user_id=%s with food context: %s", user_id, food_labels)
     else:
         query = f"user dietary preferences and history for {user_id}"
         logger.info("Fetching user memory for user_id=%s (no food context)", user_id)
@@ -86,8 +88,12 @@ async def fetch_user_memory(state: "AgentState") -> dict:
         documents: List[str] = results.get("documents", [[]])[0]
         user_memory = "\n".join(documents) if documents else "No previous history found."
         logger.debug("Retrieved %d memory documents for user_id=%s", len(documents), user_id)
+        workflow_trace.append(
+            f"fetch_user_memory: retrieved {len(documents)} memory documents for user_id={user_id}"
+        )
     except Exception as exc:
         logger.warning("Failed to fetch user memory: %s", exc)
         user_memory = "Memory unavailable."
+        workflow_trace.append("fetch_user_memory: memory unavailable, continue with fallback context")
 
-    return {"user_memory": user_memory}
+    return {"user_memory": user_memory, "workflow_trace": workflow_trace}

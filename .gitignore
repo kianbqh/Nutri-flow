@@ -51,3 +51,8 @@ Thumbs.db
 
 # ─── ChromaDB persistent store ───────────────────────────────────────────────
 chroma_db/
+
+# ─── Local tooling / large training artifacts ───────────────────────────────
+.tools/
+nutri-ai-mcp/data/
+nutri-ai-mcp/weights_by_category/

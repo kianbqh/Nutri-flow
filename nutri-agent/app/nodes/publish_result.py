@@ -16,6 +16,8 @@ from pydantic_settings import BaseSettings
 
 if TYPE_CHECKING:
     from app.graph import AgentState
+else:
+    AgentState = dict
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,7 @@ async def publish_result(state: "AgentState") -> dict:
     """
     task_id: str = state["task_id"]
     routing_key: str = state.get("callback_routing_key") or "nutri.food.analysis.result"
+    workflow_trace = list(state.get("workflow_trace") or [])
 
     result_payload = {
         "taskId": task_id,
@@ -45,6 +48,11 @@ async def publish_result(state: "AgentState") -> dict:
         "mealType": state.get("meal_type"),
         "adviceReport": state.get("advice_report"),
         "segmentationResult": state.get("segmentation_result"),
+        "workflowMode": state.get("workflow_mode"),
+        "detectedLabels": state.get("detected_labels") or [],
+        "workflowTrace": workflow_trace,
+        "error": state.get("error")
+                 or (state.get("segmentation_result") or {}).get("error"),
         "status": "COMPLETED" if state.get("advice_report") else "FAILED",
     }
 
@@ -64,8 +72,10 @@ async def publish_result(state: "AgentState") -> dict:
                 routing_key=routing_key,
             )
         logger.info("Result published successfully for task_id=%s", task_id)
+        workflow_trace.append(f"publish_result: published to {routing_key}")
     except Exception as exc:
         logger.error("Failed to publish result for task_id=%s: %s", task_id, exc)
-        return {"error": f"Result publish failed: {exc}"}
+        workflow_trace.append("publish_result: publish failed")
+        return {"error": f"Result publish failed: {exc}", "workflow_trace": workflow_trace}
 
-    return {}
+    return {"workflow_trace": workflow_trace}

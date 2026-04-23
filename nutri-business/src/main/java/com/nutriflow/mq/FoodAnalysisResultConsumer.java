@@ -5,8 +5,11 @@ import com.nutriflow.model.DietLog;
 import com.nutriflow.repository.DietLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
+
+import java.nio.charset.StandardCharsets;
 
 /**
  * RabbitMQ consumer for AI analysis results.
@@ -39,22 +42,24 @@ public class FoodAnalysisResultConsumer {
      * }
      * </pre>
      *
-     * @param payload raw JSON string delivered by RabbitMQ
+    * @param message raw AMQP message delivered by RabbitMQ
      */
     @RabbitListener(
             queues = "${mq.queue.food-analysis-result}",
             containerFactory = "autoAckContainerFactory"
     )
-    public void onAnalysisResult(String payload) {
+    public void onAnalysisResult(Message message) {
         String taskId = "unknown";
         try {
-            var node = objectMapper.readTree(payload);
+            String payloadJson = new String(message.getBody(), StandardCharsets.UTF_8);
+
+            var node = objectMapper.readTree(payloadJson);
             taskId = node.path("taskId").asText("unknown");
             log.info("Received analysis result for task_id={}", taskId);
 
             final String finalTaskId = taskId;
             dietLogRepository.findByTaskId(taskId).ifPresentOrElse(log_ -> {
-                log_.setAnalysisResult(payload);
+                log_.setAnalysisResult(payloadJson);
                 dietLogRepository.save(log_);
                 log.info("Diet log updated for task_id={}", finalTaskId);
             }, () -> log.warn("No DietLog found for task_id={} – result discarded", finalTaskId));

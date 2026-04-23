@@ -33,7 +33,7 @@ than querying with only the raw user-id or meal-type.
 
 from __future__ import annotations
 
-from typing import TypedDict, Optional
+from typing import Literal, TypedDict, Optional
 
 from langgraph.graph import StateGraph, START, END
 
@@ -57,6 +57,9 @@ class AgentState(TypedDict):
 
     # ── Intermediate ─────────────────────────────────────────────────────────
     segmentation_result: Optional[dict]  # raw MCP tool response (populated first)
+    detected_labels: Optional[list[str]] # normalized labels extracted from segmentation
+    workflow_mode: Optional[Literal["FULL", "CALORIE_ONLY"]]
+    workflow_trace: Optional[list[str]]  # human-readable decision path for debugging and UI display
     user_memory: Optional[str]           # serialised user preference history
     rag_context: Optional[str]           # retrieved nutritional knowledge
 
@@ -84,7 +87,20 @@ def build_graph() -> StateGraph:
 
     # Define edges – segmentation first so downstream nodes have food labels
     builder.add_edge(START, "call_mcp_segmentation")
-    builder.add_edge("call_mcp_segmentation", "fetch_user_memory")
+
+    # If segmentation is unavailable/empty, skip retrieval and use fallback advice.
+    def _route_after_segmentation(state: AgentState) -> str:
+      mode = state.get("workflow_mode") or "FULL"
+      return "generate_advice" if mode == "CALORIE_ONLY" else "fetch_user_memory"
+
+    builder.add_conditional_edges(
+      "call_mcp_segmentation",
+      _route_after_segmentation,
+      {
+        "fetch_user_memory": "fetch_user_memory",
+        "generate_advice": "generate_advice",
+      },
+    )
     builder.add_edge("fetch_user_memory", "rag_nutrition_lookup")
     builder.add_edge("rag_nutrition_lookup", "generate_advice")
     builder.add_edge("generate_advice", "publish_result")

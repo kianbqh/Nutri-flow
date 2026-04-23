@@ -3,7 +3,11 @@
     <section class="hero">
       <h2>智慧饮食管家</h2>
       <p>上传您的餐食照片，AI 将自动识别食物、计算营养，并为您提供个性化膳食建议。</p>
-      <RouterLink to="/upload" class="btn-primary">开始分析 →</RouterLink>
+      <div class="hero-actions">
+        <RouterLink to="/upload" class="btn-primary">开始分析 →</RouterLink>
+        <RouterLink to="/profile" class="btn-secondary">设置目标</RouterLink>
+        <RouterLink to="/history" class="btn-secondary">历史记录</RouterLink>
+      </div>
     </section>
 
     <section class="features">
@@ -62,6 +66,24 @@ import { RouterLink } from 'vue-router'
   text-decoration: none;
   font-weight: bold;
   transition: opacity 0.2s;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn-secondary {
+  display: inline-block;
+  background: #ffffff;
+  color: #2e7d32;
+  border: 1px solid #2e7d32;
+  padding: 0.75rem 2rem;
+  border-radius: 24px;
+  text-decoration: none;
+  font-weight: bold;
 }
 
 .btn-primary:hover {

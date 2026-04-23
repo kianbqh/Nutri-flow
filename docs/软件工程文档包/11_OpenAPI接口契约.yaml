@@ -1,0 +1,335 @@
+openapi: 3.0.3
+info:
+  title: Nutri-flow API
+  version: 1.0.0
+  description: |
+    Nutri-flow 业务后端接口契约（MVP）。
+    仅覆盖当前规划与已存在接口语义。
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local
+paths:
+  /users/{userId}/profile:
+    get:
+      summary: 获取用户画像
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+    put:
+      summary: 更新用户画像
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserProfileUpdate'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+
+  /diet-logs/upload:
+    post:
+      summary: 上传餐食图片并创建任务
+      parameters:
+        - in: header
+          name: X-User-Id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, mealType]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                mealType:
+                  $ref: '#/components/schemas/MealType'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /diet-logs/{taskId}/status:
+    get:
+      summary: 查询任务状态
+      parameters:
+        - in: path
+          name: taskId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskStatusResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /diet-logs:
+    get:
+      summary: 查询用户历史记录
+      parameters:
+        - in: query
+          name: userId
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: page
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+        - in: query
+          name: size
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryPageResponse'
+
+components:
+  schemas:
+    MealType:
+      type: string
+      enum: [BREAKFAST, LUNCH, DINNER, SNACK]
+
+    HealthGoal:
+      type: string
+      enum: [WEIGHT_LOSS, MUSCLE_GAIN, MAINTENANCE, GENERAL_HEALTH]
+
+    UserProfile:
+      type: object
+      required: [userId, healthGoal]
+      properties:
+        userId:
+          type: integer
+        healthGoal:
+          $ref: '#/components/schemas/HealthGoal'
+        dailyCalorieTarget:
+          type: integer
+          minimum: 500
+          maximum: 5000
+        dietaryRestrictions:
+          type: array
+          items:
+            type: string
+
+    UserProfileUpdate:
+      type: object
+      required: [healthGoal]
+      properties:
+        healthGoal:
+          $ref: '#/components/schemas/HealthGoal'
+        dailyCalorieTarget:
+          type: integer
+          minimum: 500
+          maximum: 5000
+        dietaryRestrictions:
+          type: array
+          items:
+            type: string
+
+    UploadResponse:
+      type: object
+      required: [taskId, ossKey, status]
+      properties:
+        taskId:
+          type: string
+          format: uuid
+        ossKey:
+          type: string
+        status:
+          type: string
+          enum: [PENDING]
+
+    TaskStatusResponse:
+      type: object
+      required: [taskId, status]
+      properties:
+        taskId:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, COMPLETED, FAILED]
+        analysisResult:
+          $ref: '#/components/schemas/AnalysisResult'
+        errorMessage:
+          type: string
+
+    AnalysisResult:
+      type: object
+      properties:
+        taskId:
+          type: string
+        status:
+          type: string
+        segmentationResult:
+          type: object
+          properties:
+            detected_items:
+              type: array
+              items:
+                $ref: '#/components/schemas/DetectedItem'
+        totalCalories:
+          type: number
+          format: float
+        kcalRange:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: number
+            format: float
+        confidenceLevel:
+          type: string
+          enum: [LOW, MEDIUM, HIGH]
+        workflowMode:
+          type: string
+          enum: [FULL, CALORIE_ONLY]
+        workflowTrace:
+          type: array
+          items:
+            type: string
+        detectedLabels:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
+        adviceReport:
+          type: string
+
+    DetectedItem:
+      type: object
+      properties:
+        class_id:
+          type: integer
+        class_name:
+          type: string
+        display_name:
+          type: string
+        calories:
+          type: number
+          format: float
+        protein_g:
+          type: number
+          format: float
+        fat_g:
+          type: number
+          format: float
+        carbs_g:
+          type: number
+          format: float
+        weight_g:
+          type: number
+          format: float
+        confidence_score:
+          type: number
+          format: float
+        bbox:
+          type: array
+          items:
+            type: number
+            format: float
+        mask_rle:
+          type: string
+
+    HistoryItem:
+      type: object
+      properties:
+        taskId:
+          type: string
+        mealType:
+          $ref: '#/components/schemas/MealType'
+        loggedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [PENDING, COMPLETED, FAILED]
+        adviceReport:
+          type: string
+        detectedItemsCount:
+          type: integer
+
+    HistoryPageResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoryItem'
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+        totalPages:
+          type: integer
+        hasNext:
+          type: boolean
+
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        taskId:
+          type: string
+        retryable:
+          type: boolean
+        traceId:
+          type: string

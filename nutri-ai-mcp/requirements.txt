@@ -1,9 +1,9 @@
 # ── Core framework ───────────────────────────────────────────────────────────
 fastapi==0.111.0
-uvicorn[standard]==0.30.1
+uvicorn[standard]==0.42.0
 python-multipart==0.0.22  # >=0.0.22 fixes arbitrary file write (< 0.0.22) and DoS (< 0.0.18)
-pydantic==2.7.1
-pydantic-settings==2.3.1
+pydantic==2.11.0
+pydantic-settings==2.7.1
 
 # ── MCP (Model Context Protocol) ─────────────────────────────────────────────
 mcp==1.23.0  # >=1.23.0 fixes DNS rebinding (< 1.23.0); >=1.9.4 fixes FastMCP DoS; >=1.10.0 fixes HTTP DoS
@@ -21,7 +21,13 @@ numpy==1.26.4
 pycocotools==2.0.8   # COCO mask utilities
 
 # ── HTTP client (for downloading images from OSS pre-signed URLs) ─────────────
-httpx==0.27.0
+httpx==0.27.2
 
 # ── Observability ────────────────────────────────────────────────────────────
 structlog==24.1.0
+
+# ── Training utilities ───────────────────────────────────────────────────────
+tensorboard==2.17.0           # TensorBoard visualization for training metrics
+matplotlib==3.9.2              # visualization and plotting
+scipy==1.14.1                  # scientific computing utilities
+albumentations==1.4.11         # data augmentation library for CV
