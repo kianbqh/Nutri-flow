@@ -1,33 +1,78 @@
 <template>
-  <div class="history-view">
-    <h2>历史记录</h2>
-
-    <div class="actions">
-      <button class="btn" :disabled="loading" @click="load(true)">
-        {{ loading ? '加载中…' : '刷新' }}
-      </button>
-    </div>
-
-    <p v-if="error" class="error">{{ error }}</p>
-
-    <div v-if="!loading && records.length === 0" class="empty">暂无记录</div>
-
-    <div v-for="item in records" :key="item.taskId" class="card">
-      <div class="row">
-        <strong>{{ item.mealType }}</strong>
-        <span :class="['status', item.status?.toLowerCase()]">{{ item.status }}</span>
+  <div class="page history-view">
+    <section class="page-hero">
+      <div class="page-hero__copy">
+        <span class="page-hero__eyebrow">历史回看</span>
+        <h2 class="page-hero__title">把每一次分析结果当作后续建议的上下文，而不只是一次性查看</h2>
+        <p class="page-hero__subtitle">
+          网页端把历史记录整理成更适合扫读的卡片列表，方便在大屏上快速回看餐次、状态和建议摘要。
+        </p>
+        <div class="page-actions">
+          <button class="button button--secondary" :disabled="loading" @click="load(true)">
+            {{ loading ? '加载中…' : '刷新列表' }}
+          </button>
+        </div>
       </div>
-      <p class="meta">任务ID: {{ item.taskId }}</p>
-      <p class="meta">时间: {{ formatDate(item.loggedAt) }}</p>
-      <p class="meta">识别项数量: {{ item.detectedItemsCount }}</p>
-      <p class="advice" v-if="item.adviceReport">{{ item.adviceReport }}</p>
-    </div>
 
-    <div class="pager" v-if="records.length > 0">
-      <button class="btn" :disabled="loading || page === 0" @click="prevPage">上一页</button>
-      <span>第 {{ page + 1 }} 页</span>
-      <button class="btn" :disabled="loading || !hasNext" @click="nextPage">下一页</button>
-    </div>
+      <aside class="hero-aside">
+        <div class="metric-card">
+          <span>当前页</span>
+          <strong>第 {{ page + 1 }} 页</strong>
+          <p>按时间倒序浏览饮食记录，适合连续比对近期餐食结构。</p>
+        </div>
+        <div class="metric-card">
+          <span>本页记录</span>
+          <strong>{{ records.length }} 条</strong>
+          <p>{{ hasNext ? '还有更多记录可继续翻页。' : '当前已经浏览到最新可见范围。' }}</p>
+        </div>
+        <div class="metric-card">
+          <span>个性化价值</span>
+          <strong>会参与后续建议</strong>
+          <p>历史饮食模式会影响后续建议内容，所以这页不只是归档列表，也是上下文来源。</p>
+        </div>
+      </aside>
+    </section>
+
+    <p v-if="error" class="soft-note soft-note--error">{{ error }}</p>
+
+    <section v-if="loading" class="surface-card empty-state">
+      正在加载历史记录，请稍候…
+    </section>
+
+    <section v-else-if="records.length === 0" class="surface-card empty-state">
+      还没有历史记录。完成第一次分析后，这里会按时间沉淀你的饮食轨迹。
+    </section>
+
+    <section v-else class="history-grid">
+      <article v-for="item in records" :key="item.taskId" class="surface-card history-card">
+        <div class="history-card__top">
+          <div>
+            <p class="history-card__meal">{{ mealLabel(item.mealType) }}</p>
+            <p class="history-card__time">{{ formatDate(item.loggedAt) }}</p>
+          </div>
+          <span class="status-pill" :class="statusClass(item.status)">{{ statusLabel(item.status) }}</span>
+        </div>
+
+        <div class="history-card__stats">
+          <div class="history-stat">
+            <span>识别项</span>
+            <strong>{{ item.detectedItemsCount ?? 0 }}</strong>
+          </div>
+          <div class="history-stat">
+            <span>建议状态</span>
+            <strong>{{ item.adviceReport ? '已生成' : '待补充' }}</strong>
+          </div>
+        </div>
+
+        <p class="history-preview">{{ previewAdvice(item.adviceReport) }}</p>
+      </article>
+    </section>
+
+    <section v-if="records.length > 0" class="surface-card pager-card">
+      <button class="button button--secondary" :disabled="loading || page === 0" @click="prevPage">上一页</button>
+      <span class="pager-card__text">第 {{ page + 1 }} 页</span>
+      <button class="button button--secondary" :disabled="loading || !hasNext" @click="nextPage">下一页</button>
+    </section>
   </div>
 </template>
 
@@ -78,91 +123,129 @@ function formatDate(value) {
   if (Number.isNaN(d.getTime())) return value
   return d.toLocaleString()
 }
+
+function mealLabel(value) {
+  const labels = {
+    BREAKFAST: '早餐',
+    LUNCH: '午餐',
+    DINNER: '晚餐',
+    SNACK: '加餐',
+  }
+  return labels[value] || value || '未分类餐次'
+}
+
+function statusLabel(value) {
+  const labels = {
+    COMPLETED: '已完成',
+    PENDING: '分析中',
+    FAILED: '失败',
+  }
+  return labels[value] || (value || '未知状态')
+}
+
+function statusClass(value) {
+  const normalized = (value || '').toUpperCase()
+  if (normalized === 'COMPLETED') return 'status-pill--completed'
+  if (normalized === 'PENDING') return 'status-pill--pending'
+  return 'status-pill--failed'
+}
+
+function previewAdvice(value) {
+  if (!value || !value.trim()) {
+    return '这条记录暂无建议正文，但仍会作为后续个性化建议的参考上下文。'
+  }
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= 120) return normalized
+  return `${normalized.slice(0, 120)}...`
+}
 </script>
 
 <style scoped>
-.history-view {
-  max-width: 760px;
-  margin: 0 auto;
+.hero-aside,
+.history-grid {
+  display: grid;
+  gap: 14px;
 }
 
-.actions {
-  margin: 0.8rem 0;
+.history-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.btn {
-  border: none;
-  border-radius: 18px;
-  padding: 0.45rem 1rem;
-  background: linear-gradient(135deg, #4caf50, #2196f3);
-  color: #fff;
-  cursor: pointer;
+.history-card {
+  display: grid;
+  gap: 16px;
 }
 
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.card {
-  background: #fff;
-  border-radius: 10px;
-  padding: 0.9rem 1rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  margin-bottom: 0.8rem;
-}
-
-.row {
+.history-card__top {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 12px;
 }
 
-.meta {
-  color: #606b77;
-  margin-top: 0.35rem;
-  font-size: 0.92rem;
+.history-card__meal {
+  font-size: 1.14rem;
+  font-weight: 800;
 }
 
-.advice {
-  margin-top: 0.6rem;
-  line-height: 1.5;
+.history-card__time {
+  margin-top: 6px;
+  color: var(--muted-soft);
 }
 
-.status {
-  font-size: 0.85rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: 12px;
-  color: #fff;
+.history-card__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.status.completed {
-  background: #2e7d32;
+.history-stat {
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(255, 248, 242, 0.95);
+  border: 1px solid rgba(238, 224, 213, 0.95);
 }
 
-.status.pending {
-  background: #ff9800;
+.history-stat span {
+  display: block;
+  color: var(--muted-soft);
+  font-size: 0.84rem;
+  margin-bottom: 8px;
 }
 
-.status.failed {
-  background: #d32f2f;
+.history-stat strong {
+  font-size: 1rem;
 }
 
-.empty {
-  margin: 1rem 0;
-  color: #8a9199;
+.history-preview {
+  color: var(--muted);
+  line-height: 1.75;
 }
 
-.error {
-  color: #c62828;
-  margin-bottom: 0.6rem;
-}
-
-.pager {
+.pager-card {
   display: flex;
-  gap: 0.8rem;
   align-items: center;
   justify-content: center;
-  margin-top: 0.5rem;
+  gap: 14px;
+}
+
+.pager-card__text {
+  min-width: 80px;
+  text-align: center;
+  font-weight: 700;
+}
+
+@media (max-width: 960px) {
+  .history-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .history-card__top,
+  .pager-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style>

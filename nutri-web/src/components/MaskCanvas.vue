@@ -176,9 +176,9 @@ function drawRleMask(ctx, mask, canvasW, canvasH) {
  * Draw a placeholder when no image is available.
  */
 function drawPlaceholder(ctx, canvasW, canvasH) {
-  ctx.fillStyle = '#e8f5e9'
+  ctx.fillStyle = '#f8efe6'
   ctx.fillRect(0, 0, canvasW, canvasH)
-  ctx.fillStyle = '#9e9e9e'
+  ctx.fillStyle = '#8b7663'
   ctx.font = '16px sans-serif'
   ctx.textAlign = 'center'
   ctx.fillText('上传餐食图片后，这里将显示食物分割蒙版', canvasW / 2, canvasH / 2)
@@ -202,41 +202,46 @@ function parseRgba(colorStr) {
 
 <style scoped>
 .mask-canvas-wrapper {
-  display: inline-flex;
+  display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 0.5rem;
+  align-items: stretch;
+  gap: 0.9rem;
 }
 
 .mask-canvas {
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
   max-width: 100%;
+  border-radius: 24px;
+  border: 1px solid rgba(234, 215, 202, 0.95);
+  background: #f8efe6;
+  box-shadow: 0 14px 28px rgba(86, 53, 26, 0.1);
 }
 
 .mask-legend {
   list-style: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.65rem;
 }
 
 .mask-legend-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  font-size: 0.85rem;
-  background: white;
-  border-radius: 4px;
-  padding: 2px 8px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  gap: 0.45rem;
+  min-height: 36px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255, 252, 248, 0.92);
+  border: 1px solid rgba(234, 215, 202, 0.95);
+  color: #5f5247;
+  font-size: 0.84rem;
+  font-weight: 600;
 }
 
 .legend-swatch {
   display: inline-block;
   width: 14px;
   height: 14px;
-  border-radius: 3px;
-  border: 1px solid rgba(0,0,0,0.2);
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
 }
 </style>
