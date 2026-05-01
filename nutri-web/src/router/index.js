@@ -18,6 +18,11 @@ const routes = [
     component: () => import('@/views/ProfileView.vue'),
   },
   {
+    path: '/goals',
+    name: 'goals',
+    component: () => import('@/views/GoalSettingsView.vue'),
+  },
+  {
     path: '/history',
     name: 'history',
     component: () => import('@/views/HistoryView.vue'),

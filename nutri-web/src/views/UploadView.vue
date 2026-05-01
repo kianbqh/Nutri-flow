@@ -5,10 +5,10 @@
         <span class="page-hero__eyebrow">上传与识别</span>
         <h2 class="page-hero__title">把餐图交给系统，再从结构化结果读懂这顿饭</h2>
         <p class="page-hero__subtitle">
-          网页端把拖拽上传、餐次设置、分割结果和建议阅读放在同一页，更适合边调整目标边做结果对照。
+          上传一张清晰餐图后，系统会返回识别结果、热量估算和饮食建议，帮助你更快判断这顿饭是否符合自己的目标。
         </p>
         <div class="page-actions">
-          <button class="button button--primary" :disabled="!selectedFile || foodStore.isLoading" @click="analyse">
+          <button class="button button--primary" :disabled="!isAuthenticated || !selectedFile || foodStore.isLoading" @click="analyse">
             {{ foodStore.isLoading ? '分析中…' : '开始分析' }}
           </button>
           <button class="button button--secondary" type="button" @click="triggerFileSelect">
@@ -18,6 +18,11 @@
       </div>
 
       <aside class="hero-aside">
+        <div class="metric-card">
+          <span>当前账号</span>
+          <strong>{{ accountLabel }}</strong>
+          <p>{{ isAuthenticated ? '新的分析记录会保存到当前账号下。' : '先完成手机号验证，再把分析结果和历史记录保存到你的账号。' }}</p>
+        </div>
         <div class="metric-card">
           <span>当前状态</span>
           <strong>{{ statusLabel }}</strong>
@@ -31,12 +36,18 @@
         <div class="metric-card">
           <span>分析节奏</span>
           <strong>通常 5 到 15 秒</strong>
-          <p>系统会轮询任务状态，结果到达后直接在当前页展示分割图、识别表和建议。</p>
+          <p>系统会自动轮询任务状态，结果到达后会直接展示分割图、识别表和建议。</p>
         </div>
       </aside>
     </section>
 
-    <section class="upload-layout">
+    <section v-if="!isAuthenticated" class="surface-card empty-state auth-empty-state">
+      <h3>先验证手机号账号</h3>
+        <p>完成验证后，新的分析结果、历史记录和个人主页资料都会跟随当前账号保存，不再落到默认演示账号。</p>
+        <RouterLink to="/profile" class="button button--primary">去个人主页验证</RouterLink>
+    </section>
+
+    <section v-else class="upload-layout">
       <section class="surface-card upload-stage">
         <header class="section-head">
           <h3 class="section-title">餐图预览</h3>
@@ -105,8 +116,8 @@
 
         <div class="control-wash">
           <span>当前模式</span>
-          <strong>上传一张图片，留在当前页等结果返回</strong>
-          <p>网页端更偏向连续操作和结果对照，适合在大屏上边看建议边回查识别项。</p>
+          <strong>上传一张图片，等待这一餐的完整分析结果</strong>
+          <p>你可以在同一页连续查看识别结果、热量估算和饮食建议，不需要反复切换页面。</p>
         </div>
 
         <ul class="control-list">
@@ -208,14 +219,20 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import MaskCanvas from '@/components/MaskCanvas.vue'
 import { useFoodStore } from '@/stores/food'
+import { getStoredWebSession } from '@/api/dietLog'
 
 const foodStore = useFoodStore()
 const fileInput = ref(null)
 const selectedFile = ref(null)
 const mealType = ref('LUNCH')
 const isDragOver = ref(false)
+const session = getStoredWebSession()
+
+const isAuthenticated = computed(() => Boolean(session.userId && session.phone))
+const accountLabel = computed(() => session.phone || (session.userId ? `账号 #${session.userId}` : '未验证账号'))
 
 const selectedFileName = computed(() => selectedFile.value?.name || '未选择图片')
 
@@ -267,6 +284,10 @@ function setFile(file) {
 
 async function analyse() {
   if (!selectedFile.value) return
+  if (!isAuthenticated.value) {
+    foodStore.error = '请先完成手机号验证，再开始分析并保存个人记录'
+    return
+  }
   await foodStore.uploadAndAnalyse(selectedFile.value, mealType.value)
 }
 
@@ -301,6 +322,12 @@ onBeforeUnmount(() => foodStore.stopPolling())
 .results-stack {
   display: grid;
   gap: 14px;
+}
+
+.auth-empty-state {
+  display: grid;
+  gap: 14px;
+  justify-items: start;
 }
 
 .upload-layout {

@@ -9,10 +9,7 @@ START
 [call_mcp_segmentation]  – call nutri-ai-mcp via MCP tool to segment the image
   │
   ▼
-[fetch_user_memory]  – query user's long-term preferences using detected food labels
-  │
-  ▼
-[rag_nutrition_lookup]  – retrieve relevant nutritional facts from ChromaDB RAG
+[hydrate_context]  – fetch user memory and nutrition knowledge in parallel
   │
   ▼
 [generate_advice]  – LLM call: synthesise segmentation + RAG + memory → advice
@@ -33,6 +30,7 @@ than querying with only the raw user-id or meal-type.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Literal, TypedDict, Optional
 
 from langgraph.graph import StateGraph, START, END
@@ -51,6 +49,7 @@ class AgentState(TypedDict):
     task_id: str
     user_id: str
     image_url: str
+    image_base64: Optional[str]
     meal_type: str
     callback_routing_key: Optional[str]
     user_context: Optional[dict]
@@ -70,6 +69,25 @@ class AgentState(TypedDict):
 
 # ── Graph construction ────────────────────────────────────────────────────────
 
+async def hydrate_context(state: AgentState) -> dict:
+  base_trace = list(state.get("workflow_trace") or [])
+  memory_result, rag_result = await asyncio.gather(
+    fetch_user_memory(state),
+    rag_nutrition_lookup(state),
+  )
+
+  merged_trace = list(base_trace)
+  for result in (memory_result, rag_result):
+    for step in result.get("workflow_trace") or []:
+      if step not in merged_trace:
+        merged_trace.append(step)
+
+  return {
+    "user_memory": memory_result.get("user_memory"),
+    "rag_context": rag_result.get("rag_context"),
+    "workflow_trace": merged_trace,
+  }
+
 def build_graph() -> StateGraph:
     """
     Construct and compile the Nutri-Flow dietary-advice StateGraph.
@@ -80,8 +98,7 @@ def build_graph() -> StateGraph:
 
     # Register nodes
     builder.add_node("call_mcp_segmentation", call_mcp_segmentation)
-    builder.add_node("fetch_user_memory", fetch_user_memory)
-    builder.add_node("rag_nutrition_lookup", rag_nutrition_lookup)
+    builder.add_node("hydrate_context", hydrate_context)
     builder.add_node("generate_advice", generate_advice)
     builder.add_node("publish_result", publish_result)
 
@@ -91,18 +108,17 @@ def build_graph() -> StateGraph:
     # If segmentation is unavailable/empty, skip retrieval and use fallback advice.
     def _route_after_segmentation(state: AgentState) -> str:
       mode = state.get("workflow_mode") or "FULL"
-      return "generate_advice" if mode == "CALORIE_ONLY" else "fetch_user_memory"
+      return "generate_advice" if mode == "CALORIE_ONLY" else "hydrate_context"
 
     builder.add_conditional_edges(
       "call_mcp_segmentation",
       _route_after_segmentation,
       {
-        "fetch_user_memory": "fetch_user_memory",
+        "hydrate_context": "hydrate_context",
         "generate_advice": "generate_advice",
       },
     )
-    builder.add_edge("fetch_user_memory", "rag_nutrition_lookup")
-    builder.add_edge("rag_nutrition_lookup", "generate_advice")
+    builder.add_edge("hydrate_context", "generate_advice")
     builder.add_edge("generate_advice", "publish_result")
     builder.add_edge("publish_result", END)
 

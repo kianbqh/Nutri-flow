@@ -23,6 +23,11 @@
       "type": "string",
       "description": "Object key within the OSS bucket (used for referencing without re-signing)."
     },
+    "analysisImageBase64": {
+      "type": "string",
+      "contentEncoding": "base64",
+      "description": "Optional resized JPEG payload embedded in the task for downstream analysis without re-fetching the OSS URL."
+    },
     "mealType": {
       "type": "string",
       "enum": ["BREAKFAST", "LUNCH", "DINNER", "SNACK"],
@@ -52,6 +57,34 @@
           "minimum": 500,
           "maximum": 5000,
           "description": "Target daily calorie intake in kcal."
+        },
+        "age": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120,
+          "description": "User age snapshot attached to the current upload task."
+        },
+        "heightCm": {
+          "type": "integer",
+          "minimum": 80,
+          "maximum": 260,
+          "description": "User body height snapshot in cm for personalised advice."
+        },
+        "weightKg": {
+          "type": "number",
+          "minimum": 20,
+          "maximum": 400,
+          "description": "User body weight snapshot in kg for personalised advice."
+        },
+        "gender": {
+          "type": "string",
+          "enum": ["MALE", "FEMALE", "OTHER"],
+          "description": "Optional user gender snapshot for energy and body-status interpretation."
+        },
+        "activityLevel": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH"],
+          "description": "User daily activity-level snapshot attached to the current upload task."
         }
       }
     },
@@ -67,12 +100,18 @@
       "userId": "user_001",
       "imageUrl": "http://localhost:9000/nutri-bucket/meals/user_001/lunch_20260327.jpg?X-Amz-Signature=...",
       "ossKey": "meals/user_001/lunch_20260327.jpg",
+      "analysisImageBase64": "<base64-jpeg-preview>",
       "mealType": "LUNCH",
       "createdAt": "2026-03-27T12:00:00Z",
       "userContext": {
         "dietaryRestrictions": ["dairy-free"],
         "healthGoal": "WEIGHT_LOSS",
-        "dailyCalorieTarget": 1800
+        "dailyCalorieTarget": 1800,
+        "age": 28,
+        "heightCm": 165,
+        "weightKg": 62.5,
+        "gender": "FEMALE",
+        "activityLevel": "MEDIUM"
       },
       "callbackRoutingKey": "nutri.business.task.result"
     }

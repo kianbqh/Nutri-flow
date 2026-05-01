@@ -5,11 +5,11 @@
         <section class="brand-block">
           <div class="brand-kicker">
             <span class="brand-kicker__dot"></span>
-            Nutri-Flow Web
+            Nutri-Flow
           </div>
           <div class="brand-copy">
             <h1>灵动食迹</h1>
-            <p>把移动端的暖色产品感延展到更适合桌面阅读和操作的营养分析工作台。</p>
+            <p>帮助你记录每一餐、查看热量估算，并把历史变化和个性化建议放到同一个清晰界面里。</p>
           </div>
         </section>
 
@@ -40,10 +40,11 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 const route = useRoute()
 
 const navItems = [
-  { to: '/', label: '首页', hint: '整体入口' },
-  { to: '/upload', label: '分析台', hint: '上传与结果' },
-  { to: '/history', label: '历史', hint: '记录回看' },
-  { to: '/profile', label: '目标', hint: '个性化设置' },
+  { to: '/', label: '首页', hint: '开始使用' },
+  { to: '/upload', label: '上传分析', hint: '提交餐图' },
+  { to: '/history', label: '历史记录', hint: '回看数据' },
+  { to: '/profile', label: '个人主页', hint: '账号与昵称' },
+  { to: '/goals', label: '目标设置', hint: '目标与限制' },
 ]
 </script>
 

@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 from typing import List, Optional
-from pydantic import BaseModel, HttpUrl, Field
+from pydantic import BaseModel, HttpUrl, Field, model_validator
 
 
 class SegmentationRequest(BaseModel):
     """Input payload for the food segmentation endpoint."""
 
-    image_url: HttpUrl = Field(
-        ...,
+    image_url: Optional[HttpUrl] = Field(
+        default=None,
         description="Pre-signed OSS/MinIO URL of the meal image to analyse.",
+    )
+    image_base64: Optional[str] = Field(
+        default=None,
+        description="Optional base64-encoded analysis image payload sent inline by nutri-business.",
     )
     task_id: str = Field(
         ...,
@@ -24,10 +28,19 @@ class SegmentationRequest(BaseModel):
         description="Minimum confidence score for a detection to be included.",
     )
 
+    @model_validator(mode="after")
+    def validate_image_source(self) -> "SegmentationRequest":
+        if not self.image_url and not self.image_base64:
+            raise ValueError("Either image_url or image_base64 must be provided.")
+        return self
+
 
 class FoodItem(BaseModel):
     """A single detected food instance."""
 
+    class_id: Optional[int] = Field(None, description="Numeric class id from classifier.")
+    class_name: Optional[str] = Field(None, description="Canonical class name used internally.")
+    display_name: Optional[str] = Field(None, description="Localized display name for UI rendering.")
     label: str = Field(..., description="Food class label (e.g. 'rice', 'broccoli').")
     confidence: float = Field(..., ge=0.0, le=1.0)
     bbox: List[float] = Field(
@@ -38,7 +51,11 @@ class FoodItem(BaseModel):
     )
     mask_rle: Optional[str] = Field(
         None,
-        description="Run-length-encoded binary mask (COCO RLE format).",
+        description="Run-length-encoded binary mask (row-major RLE).",
+    )
+    mask_shape: Optional[List[int]] = Field(
+        None,
+        description="Mask shape as [height, width] for decoding mask_rle.",
     )
     estimated_weight_g: Optional[float] = Field(
         None,
@@ -70,6 +87,10 @@ class SegmentationResponse(BaseModel):
     total_calories_kcal: float = Field(
         default=0.0,
         description="Sum of estimated calories across all detected items.",
+    )
+    segmentation_preview_png_base64: Optional[str] = Field(
+        default=None,
+        description="Base64-encoded PNG preview with segmentation overlay.",
     )
     inference_time_ms: float = Field(
         ...,

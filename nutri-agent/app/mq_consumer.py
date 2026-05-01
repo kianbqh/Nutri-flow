@@ -17,12 +17,13 @@ message to the same queue carrying the incremented header value.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
 import aio_pika
 from aio_pika.abc import AbstractIncomingMessage
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.graph import nutri_graph, AgentState
 
@@ -35,13 +36,51 @@ class ConsumerSettings(BaseSettings):
     rabbitmq_url: str = "amqp://nutri_mq:nutri_mq_pass@localhost:5672/"
     mq_task_queue: str = "nutri.food.analysis.task"
     mq_dead_letter_exchange: str = "nutri.food.analysis.dlx"
+    mq_result_exchange: str = "nutri.food.analysis.exchange"
+    mq_default_result_routing_key: str = "nutri.food.analysis.result"
     mq_prefetch_count: int = 1
+    agent_task_timeout_sec: int = 300
 
-    class Config:
-        env_prefix = "NUTRI_"
+    model_config = SettingsConfigDict(
+        env_prefix="NUTRI_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 _settings = ConsumerSettings()
+
+
+async def _publish_failed_result(
+    channel: aio_pika.abc.AbstractChannel,
+    body: dict,
+    error_message: str,
+) -> None:
+    """Publish a terminal FAILED result so business can stop polling quickly."""
+    routing_key = body.get("callbackRoutingKey") or _settings.mq_default_result_routing_key
+    payload = {
+        "taskId": body.get("taskId", "unknown"),
+        "userId": body.get("userId", ""),
+        "mealType": body.get("mealType"),
+        "adviceReport": None,
+        "segmentationResult": None,
+        "workflowMode": "CALORIE_ONLY",
+        "detectedLabels": [],
+        "workflowTrace": ["mq_consumer: terminal failure published from agent"],
+        "error": error_message,
+        "status": "FAILED",
+    }
+
+    exchange = await channel.get_exchange(_settings.mq_result_exchange)
+    await exchange.publish(
+        aio_pika.Message(
+            body=json.dumps(payload, ensure_ascii=False).encode(),
+            content_type="application/json",
+            delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+        ),
+        routing_key=routing_key,
+    )
 
 
 async def _handle_message(
@@ -80,6 +119,7 @@ async def _handle_message(
         "task_id": task_id,
         "user_id": body.get("userId", ""),
         "image_url": body.get("imageUrl", ""),
+        "image_base64": body.get("analysisImageBase64"),
         "meal_type": body.get("mealType", ""),
         "callback_routing_key": body.get("callbackRoutingKey"),
         "user_context": body.get("userContext"),
@@ -91,7 +131,10 @@ async def _handle_message(
     }
 
     try:
-        final_state = await nutri_graph.ainvoke(initial_state)
+        final_state = await asyncio.wait_for(
+            nutri_graph.ainvoke(initial_state),
+            timeout=_settings.agent_task_timeout_sec,
+        )
         logger.info(
             "Graph completed for task_id=%s status=%s",
             task_id,
@@ -107,7 +150,20 @@ async def _handle_message(
                 "task_id=%s exceeded max retries (%d), dead-lettering",
                 task_id, MAX_RETRIES,
             )
-            await message.reject(requeue=False)
+            try:
+                await _publish_failed_result(
+                    channel=channel,
+                    body=body,
+                    error_message=f"Agent failed after retries: {exc}",
+                )
+                await message.ack()
+            except Exception as pub_exc:
+                logger.exception(
+                    "Failed to publish terminal FAILED result for task_id=%s: %s",
+                    task_id,
+                    pub_exc,
+                )
+                await message.reject(requeue=False)
         else:
             # ACK the original so it leaves the queue, then publish a fresh
             # copy with the incremented retry counter in the headers.

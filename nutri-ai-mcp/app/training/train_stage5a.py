@@ -18,7 +18,7 @@ import csv
 from pathlib import Path
 from argparse import ArgumentParser
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
 import torch
 import torch.nn as nn
@@ -82,6 +82,23 @@ class WeightedFocalLoss(nn.Module):
         return focal_loss.mean()
 
 
+class SemanticMaskLoss(nn.Module):
+    """Class-aware semantic mask loss for multi-class mask heads."""
+
+    def __init__(self, class_weights: Optional[Dict[int, float]] = None):
+        super().__init__()
+        self.class_weights = class_weights
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        weight_tensor = None
+        if self.class_weights is not None:
+            weight_tensor = logits.new_ones((logits.shape[1],), dtype=torch.float32)
+            for cls_id, weight in self.class_weights.items():
+                if 0 <= cls_id < logits.shape[1]:
+                    weight_tensor[cls_id] = float(weight)
+        return F.cross_entropy(logits, targets, weight=weight_tensor)
+
+
 class DiceLoss(nn.Module):
     """Dice loss for segmentation."""
     
@@ -97,7 +114,59 @@ class DiceLoss(nn.Module):
         return dice
 
 
-def build_semantic_targets(batch: dict, device: str, num_classes: int) -> tuple:
+def compute_hard_boundary_map(labels: torch.Tensor) -> torch.Tensor:
+    """Compute a binary boundary target from semantic labels."""
+    boundary = torch.zeros_like(labels, dtype=torch.float32)
+    vertical = (labels[:, 1:, :] != labels[:, :-1, :]).float()
+    horizontal = (labels[:, :, 1:] != labels[:, :, :-1]).float()
+    boundary[:, 1:, :] = torch.maximum(boundary[:, 1:, :], vertical)
+    boundary[:, :-1, :] = torch.maximum(boundary[:, :-1, :], vertical)
+    boundary[:, :, 1:] = torch.maximum(boundary[:, :, 1:], horizontal)
+    boundary[:, :, :-1] = torch.maximum(boundary[:, :, :-1], horizontal)
+    return boundary.unsqueeze(1)
+
+
+def compute_soft_boundary_map(prob_map: torch.Tensor) -> torch.Tensor:
+    """Compute a soft boundary response from a probability map."""
+    vertical = torch.abs(prob_map[:, :, 1:, :] - prob_map[:, :, :-1, :])
+    horizontal = torch.abs(prob_map[:, :, :, 1:] - prob_map[:, :, :, :-1])
+    vertical_top = F.pad(vertical, (0, 0, 1, 0))
+    vertical_bottom = F.pad(vertical, (0, 0, 0, 1))
+    horizontal_left = F.pad(horizontal, (1, 0, 0, 0))
+    horizontal_right = F.pad(horizontal, (0, 1, 0, 0))
+    boundary = torch.maximum(torch.maximum(vertical_top, vertical_bottom), torch.maximum(horizontal_left, horizontal_right))
+    return boundary.clamp(0.0, 1.0)
+
+
+def compute_boundary_logit_map(logit_map: torch.Tensor) -> torch.Tensor:
+    """Compute boundary logits directly from raw binary mask logits."""
+    vertical = torch.abs(logit_map[:, :, 1:, :] - logit_map[:, :, :-1, :])
+    horizontal = torch.abs(logit_map[:, :, :, 1:] - logit_map[:, :, :, :-1])
+    vertical_top = F.pad(vertical, (0, 0, 1, 0))
+    vertical_bottom = F.pad(vertical, (0, 0, 0, 1))
+    horizontal_left = F.pad(horizontal, (1, 0, 0, 0))
+    horizontal_right = F.pad(horizontal, (0, 1, 0, 0))
+    return torch.maximum(torch.maximum(vertical_top, vertical_bottom), torch.maximum(horizontal_left, horizontal_right))
+
+
+class BoundaryConsistencyLoss(nn.Module):
+    """Encourages semantic foreground probability to align with target boundaries."""
+
+    def forward(self, logits: torch.Tensor, boundary_targets: torch.Tensor) -> torch.Tensor:
+        if logits.shape[1] == 1:
+            # For binary heads, operate on raw logits to avoid unstable logit(prob) gradients
+            # once the resumed mask head becomes highly saturated.
+            pred_boundary_logits = compute_boundary_logit_map(logits.float())
+            return F.binary_cross_entropy_with_logits(pred_boundary_logits, boundary_targets.float())
+        else:
+            class_prob = torch.softmax(logits, dim=1)
+            foreground_prob = class_prob[:, 1:, :, :].max(dim=1, keepdim=True).values
+        pred_boundary = compute_soft_boundary_map(foreground_prob)
+        pred_boundary_logits = torch.logit(pred_boundary.clamp(1e-4, 1.0 - 1e-4))
+        return F.binary_cross_entropy_with_logits(pred_boundary_logits, boundary_targets.float())
+
+
+def build_semantic_targets(batch: dict, device: str, num_classes: int, mask_head_mode: str = 'binary') -> tuple:
     """Convert batch to semantic segmentation targets."""
     semantic_labels = batch.get('semantic_label') or batch.get('semantic_labels')
     if semantic_labels is None:
@@ -109,11 +178,57 @@ def build_semantic_targets(batch: dict, device: str, num_classes: int) -> tuple:
     B, H, W = semantic_labels.shape
     cls_targets = torch.zeros(B, H, W, dtype=torch.long, device=device)
     cls_targets = semantic_labels
-    
-    # Create binary mask for foreground (everything except background 0)
-    mask_targets = (semantic_labels > 0).float().unsqueeze(1)  # (B, 1, H, W)
-    
-    return cls_targets, mask_targets
+
+    if mask_head_mode == 'semantic':
+        mask_targets = cls_targets
+    else:
+        # Create binary mask for foreground (everything except background 0)
+        mask_targets = (semantic_labels > 0).float().unsqueeze(1)  # (B, 1, H, W)
+
+    boundary_targets = compute_hard_boundary_map(semantic_labels)
+
+    return cls_targets, mask_targets, boundary_targets
+
+
+def extract_model_state(checkpoint: dict | torch.Tensor) -> dict[str, Any] | torch.Tensor:
+    if isinstance(checkpoint, dict) and 'model_state' in checkpoint:
+        return checkpoint['model_state']
+    return checkpoint
+
+
+def load_checkpoint_compatible(model: nn.Module, checkpoint: dict | torch.Tensor, context: str = 'checkpoint') -> None:
+    model_state = model.state_dict()
+    checkpoint_state = extract_model_state(checkpoint)
+    if not isinstance(checkpoint_state, dict):
+        raise TypeError(f"{context} model_state must be a dict, got {type(checkpoint_state)!r}")
+
+    compatible_state = {}
+    skipped_shape = []
+    unexpected = []
+
+    for key, value in checkpoint_state.items():
+        if key not in model_state:
+            unexpected.append(key)
+            continue
+        if model_state[key].shape != value.shape:
+            skipped_shape.append(key)
+            continue
+        compatible_state[key] = value
+
+    missing = [key for key in model_state.keys() if key not in compatible_state]
+    model.load_state_dict(compatible_state, strict=False)
+    logger.info(
+        "%s compatible load: matched=%d missing=%d skipped_shape=%d unexpected=%d",
+        context,
+        len(compatible_state),
+        len(missing),
+        len(skipped_shape),
+        len(unexpected),
+    )
+    if skipped_shape:
+        logger.info("%s skipped shape-mismatch keys: %s", context, skipped_shape[:10])
+    if unexpected:
+        logger.info("%s unexpected keys: %s", context, unexpected[:10])
 
 
 def train_one_epoch(
@@ -124,9 +239,12 @@ def train_one_epoch(
     num_classes: int,
     epoch: int,
     focal_loss_fn,
-    dice_loss_fn,
+    mask_loss_fn,
+    boundary_loss_fn,
     cls_weight: float,
     mask_weight: float,
+    boundary_weight: float,
+    mask_head_mode: str,
     max_batches: int,
     writer: SummaryWriter,
     global_step: int,
@@ -142,7 +260,12 @@ def train_one_epoch(
         
         try:
             images = batch['images'].to(device)
-            cls_targets, mask_targets = build_semantic_targets(batch, device=device, num_classes=num_classes)
+            cls_targets, mask_targets, boundary_targets = build_semantic_targets(
+                batch,
+                device=device,
+                num_classes=num_classes,
+                mask_head_mode=mask_head_mode,
+            )
             
             # Forward pass
             with autocast():
@@ -153,6 +276,7 @@ def train_one_epoch(
                 loss_total = torch.zeros((), device=device)
                 loss_cls_total = torch.zeros((), device=device)
                 loss_mask_total = torch.zeros((), device=device)
+                loss_boundary_total = torch.zeros((), device=device)
                 
                 for level in range(len(mask_logits_list)):
                     cls_logits = cls_logits_list[level]
@@ -163,17 +287,41 @@ def train_one_epoch(
                         size=cls_logits.shape[-2:],
                         mode='nearest',
                     ).squeeze(1).long()
-                    level_mask_targets = F.interpolate(
-                        mask_targets,
+                    level_boundary_targets = F.interpolate(
+                        boundary_targets,
                         size=mask_logits.shape[-2:],
                         mode='nearest',
                     )
+                    if mask_head_mode == 'semantic':
+                        level_mask_targets = F.interpolate(
+                            mask_targets.unsqueeze(1).float(),
+                            size=mask_logits.shape[-2:],
+                            mode='nearest',
+                        ).squeeze(1).long()
+                    else:
+                        level_mask_targets = F.interpolate(
+                            mask_targets,
+                            size=mask_logits.shape[-2:],
+                            mode='nearest',
+                        )
                     
                     loss_cls = focal_loss_fn(cls_logits, level_cls_targets)
-                    loss_mask = dice_loss_fn(mask_logits, level_mask_targets)
+                    loss_mask = mask_loss_fn(mask_logits, level_mask_targets)
+                    loss_boundary = boundary_loss_fn(mask_logits, level_boundary_targets)
                     loss_cls_total += loss_cls
                     loss_mask_total += loss_mask
-                    loss_total += cls_weight * loss_cls + mask_weight * loss_mask
+                    loss_boundary_total += loss_boundary
+                    loss_total += cls_weight * loss_cls + mask_weight * loss_mask + boundary_weight * loss_boundary
+
+                if not torch.isfinite(loss_total):
+                    raise RuntimeError(
+                        "Non-finite loss detected at "
+                        f"epoch={epoch+1} batch={batch_idx+1}: "
+                        f"total={loss_total.detach().float().item():.6f}, "
+                        f"cls={loss_cls_total.detach().float().item():.6f}, "
+                        f"mask={loss_mask_total.detach().float().item():.6f}, "
+                        f"boundary={loss_boundary_total.detach().float().item():.6f}"
+                    )
             
             # Backward
             optimizer.zero_grad()
@@ -187,11 +335,12 @@ def train_one_epoch(
             if (batch_idx + 1) % 10 == 0:
                 logger.info(
                     f"Epoch {epoch+1}, Batch {batch_idx+1}/{len(train_loader)}, "
-                    f"Loss: {loss_total.item():.4f}, Cls: {loss_cls_total.item():.4f}, Mask: {loss_mask_total.item():.4f}"
+                    f"Loss: {loss_total.item():.4f}, Cls: {loss_cls_total.item():.4f}, Mask: {loss_mask_total.item():.4f}, Boundary: {loss_boundary_total.item():.4f}"
                 )
                 writer.add_scalar('train/loss', loss_total.item(), global_step)
                 writer.add_scalar('train/loss_cls', loss_cls_total.item(), global_step)
                 writer.add_scalar('train/loss_mask', loss_mask_total.item(), global_step)
+                writer.add_scalar('train/loss_boundary', loss_boundary_total.item(), global_step)
                 global_step += 1
         
         except RuntimeError as e:
@@ -249,7 +398,7 @@ def evaluate(
             break
         
         images = batch['images'].to(device)
-        cls_targets, _ = build_semantic_targets(batch, device=device, num_classes=num_classes)
+        cls_targets, _, _ = build_semantic_targets(batch, device=device, num_classes=num_classes)
         
         outputs = model(images)
         cls_logits = outputs['cls_logits'][0]  # Use first scale
@@ -327,6 +476,9 @@ def main():
     parser.add_argument('--resume_from', type=str, default=None)
     parser.add_argument('--class_weights_file', type=str, default='class_distribution.json')
     parser.add_argument('--lr', type=float, default=2e-4)
+    parser.add_argument('--mask_head_mode', type=str, default='binary', choices=['binary', 'semantic'])
+    parser.add_argument('--boundary_loss_weight', type=float, default=0.0)
+    parser.add_argument('--use_weighted_sampler', action='store_true')
     
     args = parser.parse_args()
     args.output_dir = Path(args.output_dir)
@@ -362,9 +514,11 @@ def main():
         num_workers=0,
         dataset_type='foodseg103_hf',
         hf_dataset_dir=args.hf_dataset_dir,
+        use_weighted_sampler=args.use_weighted_sampler,
     )
     logger.info(f"Train loader: {len(train_loader)} batches")
     logger.info(f"Val loader: {len(val_loader)} batches")
+    logger.info(f"Weighted sampler enabled: {args.use_weighted_sampler}")
     
     # Model
     model = create_model_trainable(
@@ -372,16 +526,14 @@ def main():
         pretrained=True,
         backbone_name=args.backbone,
         img_size=args.img_size,
+        mask_head_mode=args.mask_head_mode,
     )
     model.to(device)
     
     if args.resume_from and args.resume_from.exists():
         logger.info(f"Resuming from: {args.resume_from}")
         checkpoint = torch.load(args.resume_from, map_location=device)
-        if isinstance(checkpoint, dict) and 'model_state' in checkpoint:
-            model.load_state_dict(checkpoint['model_state'])
-        else:
-            model.load_state_dict(checkpoint)
+        load_checkpoint_compatible(model, checkpoint, context='resume_from')
         logger.info("Checkpoint loaded successfully")
     
     # Optimizer & Scheduler
@@ -390,7 +542,11 @@ def main():
     
     # Losses with class weighting
     focal_loss = WeightedFocalLoss(class_weights=class_weights_dict)
-    dice_loss = DiceLoss()
+    if args.mask_head_mode == 'semantic':
+        mask_loss = SemanticMaskLoss(class_weights=class_weights_dict)
+    else:
+        mask_loss = DiceLoss()
+    boundary_loss = BoundaryConsistencyLoss()
     
     # TensorBoard
     log_dir = run_dir / f'logs_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
@@ -412,7 +568,8 @@ def main():
         
         global_step = train_one_epoch(
             model, train_loader, optimizer, device, args.num_classes,
-            epoch, focal_loss, dice_loss, args.loss_cls_weight, args.loss_mask_weight,
+            epoch, focal_loss, mask_loss, boundary_loss, args.loss_cls_weight, args.loss_mask_weight,
+            args.boundary_loss_weight, args.mask_head_mode,
             args.max_train_batches, writer, global_step
         )
         

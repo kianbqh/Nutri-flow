@@ -25,3 +25,27 @@ Nutri-Flow is an intelligent health application that seamlessly integrates cutti
     Industrial Microservices: An asynchronous decoupled architecture using Spring Boot and FastAPI, orchestrated by RabbitMQ for task scheduling, and following the MCP (Model Context Protocol) for standardized tool calling.
 
     Interactive Frontend: A Vue 3-based interface featuring dynamic Canvas mask rendering, allowing users to interact with and refine segmentation results in real-time.
+
+## Local Dev Quick Start (Windows PowerShell)
+
+Use the following scripts to avoid manual multi-terminal startup and reduce timeout issues caused by missing consumers.
+
+1. Start local stack (infra + inference + business + agent):
+
+    `powershell -ExecutionPolicy Bypass -File scripts/dev-up.ps1`
+
+    If Docker infra is already running:
+
+    `powershell -ExecutionPolicy Bypass -File scripts/dev-up.ps1 -SkipDocker`
+
+2. Health check (HTTP endpoints + RabbitMQ task consumer):
+
+    `powershell -ExecutionPolicy Bypass -File scripts/dev-health.ps1`
+
+3. Stop managed services started by dev-up:
+
+    `powershell -ExecutionPolicy Bypass -File scripts/dev-down.ps1`
+
+Managed logs are written to:
+
+`./.runtime/logs`

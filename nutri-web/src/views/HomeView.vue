@@ -2,33 +2,33 @@
   <div class="page home-view">
     <section class="page-hero home-hero">
       <div class="page-hero__copy">
-        <span class="page-hero__eyebrow">桌面端营养分析台</span>
-        <h2 class="page-hero__title">把一次餐食分析，拆成更顺手的上传、判断和回看流程</h2>
+        <span class="page-hero__eyebrow">营养记录与分析</span>
+        <h2 class="page-hero__title">上传一餐，快速看到热量估算、识别明细和可执行建议</h2>
         <p class="page-hero__subtitle">
-          这里延续移动端的暖色卡片语言，但更强调桌面端的模块排布、双列信息密度和稳定导航，让分析结果更适合停下来阅读与比较。
+          灵动食迹会把图片识别、热量估算、历史记录和个人目标串起来，帮助你更快判断这顿饭吃得是否合适，以及下一餐怎么调整。
         </p>
         <div class="page-actions">
           <RouterLink to="/upload" class="button button--primary">开始一轮分析</RouterLink>
-          <RouterLink to="/profile" class="button button--secondary">先设置目标</RouterLink>
+          <RouterLink to="/goals" class="button button--secondary">进入目标设置</RouterLink>
           <RouterLink to="/history" class="button button--soft">查看历史记录</RouterLink>
         </div>
       </div>
 
       <aside class="hero-aside">
         <div class="metric-card">
-          <span>识别主线</span>
-          <strong>Swin Transformer 分割</strong>
-          <p>围绕真实餐图做区域识别和营养估算，先拿到可读结果，再延展到建议生成。</p>
+          <span>你会得到</span>
+          <strong>热量估算与识别明细</strong>
+          <p>系统会按图片内容给出食物识别结果、预估重量和热量合计，帮助你快速判断这一餐的结构。</p>
         </div>
         <div class="metric-card">
-          <span>建议主线</span>
-          <strong>历史 + 目标 + RAG</strong>
-          <p>不只看这顿饭，还会参考近期记录和用户目标，给出更贴近当前状态的建议。</p>
+          <span>建议来源</span>
+          <strong>历史记录 + 当前目标</strong>
+          <p>建议不只看这一餐，也会参考你的历史饮食记录和当前目标，让提醒更贴近你自己的状态。</p>
         </div>
         <div class="metric-card">
-          <span>适配方向</span>
-          <strong>保留产品感，但更像工作台</strong>
-          <p>网页端不照搬手机页面，而是把结构、留白和信息层级重新整理成桌面阅读节奏。</p>
+          <span>个人数据</span>
+          <strong>跟随账号持续保存</strong>
+          <p>完成手机号验证后，历史记录、昵称和个人目标都会持续绑定到你的账号，便于长期回看和对比。</p>
         </div>
       </aside>
     </section>
@@ -55,7 +55,7 @@
       <article class="surface-card">
         <header class="section-head">
           <h3 class="section-title">标准流程</h3>
-          <p class="section-subtitle">网页端把分析链路拆成更容易理解的四步，适合演示和连续对比。</p>
+          <p class="section-subtitle">从上传到回看，四步完成一轮完整的个人饮食记录。</p>
         </header>
         <ol class="process-list">
           <li>
@@ -79,13 +79,13 @@
 
       <article class="surface-card editorial-card">
         <header class="section-head">
-          <h3 class="section-title">这次网页端同步的原则</h3>
-          <p class="section-subtitle">不是把手机页面等比放大，而是把视觉语言和信息气质迁到更适合大屏的节奏里。</p>
+          <h3 class="section-title">为什么建议先设置目标，再完善主页</h3>
+          <p class="section-subtitle">目标设置和个人主页已经拆成两个页面，各自更专注，后续每一次记录也会更容易长期追踪。</p>
         </header>
         <div class="editorial-copy">
-          <p>保留移动端已经建立起来的暖色渐变、柔和卡片和产品化语气。</p>
-          <p>改成更适合桌面的顶部导航、双列布局、宽边距和更明确的模块层级。</p>
-          <p>让首页、分析台、历史和目标页能自然串起来，而不是只有首页好看。</p>
+          <p>完成手机号验证后，新的上传记录和历史数据都会归到你的个人账号下，不会再混到默认演示账号里。</p>
+          <p>个人主页现在专门处理账号和昵称，称呼可以单独修改，不会和目标设置混在一起。</p>
+          <p>目标设置页会长期影响建议内容，让系统更清楚你是想减脂、维持，还是更关注整体均衡。</p>
         </div>
       </article>
     </section>

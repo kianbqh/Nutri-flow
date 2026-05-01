@@ -4,10 +4,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nutriflow.model.User;
 import com.nutriflow.repository.UserRepository;
+import com.nutriflow.service.UserNicknameService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -31,11 +33,12 @@ public class UserProfileController {
 
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+    private final UserNicknameService userNicknameService;
 
     @GetMapping("/{userId}/profile")
     public ResponseEntity<?> getProfile(@PathVariable Long userId) {
         return userRepository.findById(userId)
-                .<ResponseEntity<?>>map(user -> ResponseEntity.ok(toProfileResponse(user)))
+                .<ResponseEntity<?>>map(user -> ResponseEntity.ok(toProfileResponse(userNicknameService.ensureNickname(user))))
                 .orElseGet(() -> ResponseEntity.status(404).body(Map.of("error", "User not found")));
     }
 
@@ -49,10 +52,15 @@ public class UserProfileController {
 
         return userRepository.findById(userId)
                 .<ResponseEntity<?>>map(user -> {
+                    user.setNickname(sanitizeNickname(req.getNickname()));
                     user.setHealthGoal(req.getHealthGoal());
                     user.setDailyCalorieTarget(req.getDailyCalorieTarget());
                     user.setDietaryRestrictions(toJson(req.getDietaryRestrictions()));
-                    userRepository.save(user);
+                    user.setHeightCm(req.getHeightCm());
+                    user.setWeightKg(req.getWeightKg());
+                    user.setGender(req.getGender());
+                    user = userRepository.save(user);
+                    user = userNicknameService.ensureNickname(user);
                     return ResponseEntity.ok(toProfileResponse(user));
                 })
                 .orElseGet(() -> ResponseEntity.status(404).body(Map.of("error", "User not found")));
@@ -67,6 +75,15 @@ public class UserProfileController {
                         user.setHealthGoal(parsed.getHealthGoal());
                         user.setDailyCalorieTarget(parsed.getDailyCalorieTarget());
                         user.setDietaryRestrictions(toJson(parsed.getDietaryRestrictions()));
+                        if (req.getHeightCm() != null) {
+                            user.setHeightCm(req.getHeightCm());
+                        }
+                        if (req.getWeightKg() != null) {
+                            user.setWeightKg(req.getWeightKg());
+                        }
+                        if (req.getGender() != null && !req.getGender().isBlank()) {
+                            user.setGender(req.getGender().toUpperCase(Locale.ROOT));
+                        }
                         userRepository.save(user);
                     }
                     return ResponseEntity.ok(parsed);
@@ -166,10 +183,23 @@ public class UserProfileController {
     private ProfileResponse toProfileResponse(User user) {
         return new ProfileResponse(
                 user.getId(),
+                user.getPhone(),
+                user.getNickname(),
                 user.getHealthGoal(),
                 user.getDailyCalorieTarget(),
-                parseRestrictions(user.getDietaryRestrictions())
+                parseRestrictions(user.getDietaryRestrictions()),
+                user.getHeightCm(),
+                user.getWeightKg(),
+                user.getGender()
         );
+    }
+
+    private String sanitizeNickname(String nickname) {
+        if (nickname == null) {
+            return null;
+        }
+        String trimmed = nickname.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private String toJson(List<String> restrictions) {
@@ -196,6 +226,9 @@ public class UserProfileController {
 
     @Data
     public static class UpdateProfileRequest {
+        @Size(max = 24)
+        private String nickname;
+
         @NotBlank
         private String healthGoal;
 
@@ -204,15 +237,23 @@ public class UserProfileController {
         private Integer dailyCalorieTarget;
 
         private List<String> dietaryRestrictions = new ArrayList<>();
+        private Integer heightCm;
+        private Double weightKg;
+        private String gender;
     }
 
     @Data
     @AllArgsConstructor
     public static class ProfileResponse {
         private Long userId;
+        private String phone;
+        private String nickname;
         private String healthGoal;
         private Integer dailyCalorieTarget;
         private List<String> dietaryRestrictions;
+        private Integer heightCm;
+        private Double weightKg;
+        private String gender;
     }
 
     @Data

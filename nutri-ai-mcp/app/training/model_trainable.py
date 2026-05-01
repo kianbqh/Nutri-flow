@@ -93,6 +93,7 @@ class NutriSegModelTrainable(nn.Module):
         pretrained: bool = True,
         backbone_name: str = "swin_tiny_patch4_window7_224",
         img_size: int = 224,
+        mask_head_mode: str = "binary",
     ) -> None:
         """
         Args:
@@ -104,6 +105,9 @@ class NutriSegModelTrainable(nn.Module):
         super().__init__()
         self.backbone_name = backbone_name
         self.img_size = img_size
+        if mask_head_mode not in {"binary", "semantic"}:
+            raise ValueError(f"Unsupported mask_head_mode: {mask_head_mode}")
+        self.mask_head_mode = mask_head_mode
         try:
             import timm
             self.backbone = timm.create_model(
@@ -137,6 +141,7 @@ class NutriSegModelTrainable(nn.Module):
         
         # Multi-level FPN outputs (P2, P3, P4)
         self.fpn_levels = 3
+        mask_out_channels = 1 if mask_head_mode == "binary" else num_classes
         
         # Classification head (per FPN level)
         self.cls_heads = nn.ModuleList([
@@ -152,7 +157,7 @@ class NutriSegModelTrainable(nn.Module):
             nn.Sequential(
                 nn.Conv2d(fpn_channels, 256, 3, padding=1),
                 nn.ReLU(),
-                nn.Conv2d(256, 1, 1)
+                nn.Conv2d(256, mask_out_channels, 1)
             ) for _ in range(self.fpn_levels)
         ])
         
@@ -208,6 +213,7 @@ def create_model_trainable(
     pretrained: bool = True,
     backbone_name: str = "swin_tiny_patch4_window7_224",
     img_size: int = 224,
+    mask_head_mode: str = "binary",
 ) -> NutriSegModelTrainable:
     """Factory function to create a trainable model."""
     return NutriSegModelTrainable(
@@ -215,4 +221,5 @@ def create_model_trainable(
         pretrained=pretrained,
         backbone_name=backbone_name,
         img_size=img_size,
+        mask_head_mode=mask_head_mode,
     )

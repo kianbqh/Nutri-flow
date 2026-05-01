@@ -23,6 +23,12 @@ public class User {
     @Column(name = "password_hash", nullable = false, length = 256)
     private String passwordHash;
 
+    @Column(length = 20)
+    private String phone;
+
+    @Column(length = 24, unique = true)
+    private String nickname;
+
     @Column(name = "health_goal", length = 32)
     private String healthGoal = "GENERAL_HEALTH";
 

@@ -6,12 +6,18 @@ Starts:
   • MCP Server                  (for tool invocation by nutri-agent)
 """
 
+import logging
+
+import numpy as np
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.inference import run_inference
 from app.routers import inference, health
 from app.mcp_server import mcp_app
+
+logger = logging.getLogger(__name__)
 
 # ── FastAPI application ────────────────────────────────────────────────────
 app = FastAPI(
@@ -35,6 +41,16 @@ app.include_router(inference.router, prefix="/v1", tags=["Inference"])
 
 # Mount MCP server at /mcp (SSE transport)
 app.mount("/mcp", mcp_app)
+
+
+@app.on_event("startup")
+def warmup_segmentation_model() -> None:
+    try:
+        dummy_image = np.zeros((64, 64, 3), dtype=np.uint8)
+        _, _, _, model_version = run_inference(dummy_image, confidence_threshold=0.99)
+        logger.info("Segmentation model warmup complete (%s)", model_version)
+    except Exception as exc:
+        logger.exception("Segmentation model warmup failed: %s", exc)
 
 
 if __name__ == "__main__":

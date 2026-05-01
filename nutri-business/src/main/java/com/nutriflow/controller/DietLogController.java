@@ -13,13 +13,28 @@ import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.imageio.IIOImage;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,6 +61,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class DietLogController {
 
+    private static final long PENDING_TIMEOUT_SECONDS = 420;
+    private static final int ANALYSIS_IMAGE_MAX_SIDE = 1024;
+    private static final float ANALYSIS_IMAGE_JPEG_QUALITY = 0.82f;
+
     private final OssService ossService;
     private final FoodAnalysisProducer producer;
     private final DietLogRepository dietLogRepository;
@@ -64,8 +83,14 @@ public class DietLogController {
     public ResponseEntity<?> uploadMealImage(
             @RequestHeader("X-User-Id") @NotBlank String userId,
             @RequestParam @Pattern(regexp = "BREAKFAST|LUNCH|DINNER|SNACK") String mealType,
+            @RequestParam(required = false) Integer age,
+            @RequestParam(required = false) Integer heightCm,
+            @RequestParam(required = false) Double weightKg,
+            @RequestParam(required = false) String gender,
+            @RequestParam(required = false) String activityLevel,
             @RequestParam("file") MultipartFile file) throws IOException {
 
+        String analysisImageBase64 = buildAnalysisImageBase64(file);
         String ossKey = ossService.uploadMealImage(userId, mealType, file);
         String imageUrl = ossService.generatePresignedUrl(ossKey);
         String taskId = UUID.randomUUID().toString();
@@ -97,9 +122,10 @@ public class DietLogController {
                 .userId(userId)
                 .imageUrl(imageUrl)
                 .ossKey(ossKey)
+                .analysisImageBase64(analysisImageBase64)
                 .mealType(mealType)
                 .createdAt(Instant.now())
-            .userContext(buildUserContext(userIdLong))
+                .userContext(buildUserContext(userIdLong, age, heightCm, weightKg, gender, activityLevel))
                 .callbackRoutingKey("nutri.food.analysis.result")
                 .build();
 
@@ -128,6 +154,14 @@ public class DietLogController {
                     Map<String, Object> resp = new LinkedHashMap<>();
                     resp.put("taskId", log_.getTaskId());
                     boolean completed = log_.getAnalysisResult() != null;
+
+                    if (!completed && isPendingTimedOut(log_)) {
+                        String timeoutJson = buildPendingTimeoutResult(log_);
+                        log_.setAnalysisResult(timeoutJson);
+                        dietLogRepository.save(log_);
+                        completed = true;
+                    }
+
                     String derivedStatus = completed ? deriveStatus(log_.getAnalysisResult()) : "PENDING";
                     resp.put("status", derivedStatus);
                     if (completed) {
@@ -155,6 +189,38 @@ public class DietLogController {
                     resp.put("analysisResult", null);
                     return ResponseEntity.ok(resp);
                 });
+    }
+
+    @GetMapping("/{taskId}/image")
+    public ResponseEntity<?> getTaskImage(@PathVariable String taskId) {
+        return dietLogRepository.findByTaskId(taskId)
+                .map(log_ -> {
+                    if (log_.getOssKey() == null || log_.getOssKey().isBlank()) {
+                        return ResponseEntity.notFound().build();
+                    }
+
+                    try {
+                        OssService.DownloadedObject image = ossService.downloadObject(log_.getOssKey());
+                        MediaType mediaType = MediaType.APPLICATION_OCTET_STREAM;
+                        if (image.getContentType() != null && !image.getContentType().isBlank()) {
+                            try {
+                                mediaType = MediaType.parseMediaType(image.getContentType());
+                            } catch (Exception ignored) {
+                                mediaType = MediaType.APPLICATION_OCTET_STREAM;
+                            }
+                        }
+
+                        return ResponseEntity.ok()
+                                .contentType(mediaType)
+                                .body(image.getBytes());
+                    } catch (Exception e) {
+                        log.warn("Failed to load diet log image for taskId={}: {}", taskId, e.getMessage());
+                        return ResponseEntity.internalServerError().body(Map.of(
+                                "error", "加载历史图片失败"
+                        ));
+                    }
+                })
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @GetMapping
@@ -210,21 +276,45 @@ public class DietLogController {
         ));
     }
 
-    private ImageAnalysisTaskMessage.UserContext buildUserContext(long userId) {
+    private ImageAnalysisTaskMessage.UserContext buildUserContext(
+            long userId,
+            Integer age,
+            Integer heightCm,
+            Double weightKg,
+            String gender,
+            String activityLevel
+    ) {
         return userRepository.findById(userId)
-                .map(this::toUserContext)
+                .map(user -> toUserContext(user, age, heightCm, weightKg, gender, activityLevel))
                 .orElse(ImageAnalysisTaskMessage.UserContext.builder()
                         .dietaryRestrictions(Collections.emptyList())
                         .healthGoal("GENERAL_HEALTH")
                         .dailyCalorieTarget(2000)
+                        .age(age)
+                        .heightCm(heightCm)
+                        .weightKg(weightKg)
+                        .gender(gender == null || gender.isBlank() ? "OTHER" : gender)
+                        .activityLevel(activityLevel)
                         .build());
     }
 
-    private ImageAnalysisTaskMessage.UserContext toUserContext(User user) {
+    private ImageAnalysisTaskMessage.UserContext toUserContext(
+            User user,
+            Integer age,
+            Integer heightCm,
+            Double weightKg,
+            String gender,
+            String activityLevel
+    ) {
         return ImageAnalysisTaskMessage.UserContext.builder()
                 .dietaryRestrictions(parseDietaryRestrictions(user.getDietaryRestrictions()))
                 .healthGoal(user.getHealthGoal())
                 .dailyCalorieTarget(user.getDailyCalorieTarget())
+                .age(age)
+                .heightCm(heightCm != null ? heightCm : user.getHeightCm())
+                .weightKg(weightKg != null ? weightKg : user.getWeightKg())
+                .gender(gender != null && !gender.isBlank() ? gender : user.getGender())
+                .activityLevel(activityLevel)
                 .build();
     }
 
@@ -266,6 +356,105 @@ public class DietLogController {
             return segNode.get("error").asText();
         }
         return null;
+    }
+
+    private boolean isPendingTimedOut(DietLog log_) {
+        LocalDateTime loggedAt = log_.getLoggedAt();
+        if (loggedAt == null) {
+            return false;
+        }
+        long ageSeconds = ChronoUnit.SECONDS.between(loggedAt, LocalDateTime.now());
+        return ageSeconds >= PENDING_TIMEOUT_SECONDS;
+    }
+
+    private String buildPendingTimeoutResult(DietLog log_) {
+        String timeoutSeconds = String.valueOf(PENDING_TIMEOUT_SECONDS);
+        try {
+            return objectMapper.writeValueAsString(Map.of(
+                    "status", "FAILED",
+                    "taskId", log_.getTaskId(),
+                "error", "分析任务超时：超过" + timeoutSeconds + "秒仍未完成。请检查 nutri-agent 消费器与分割服务状态。",
+                "errorMessage", "分析任务超时：超过" + timeoutSeconds + "秒仍未完成。请稍后重试。",
+                    "workflowMode", "CALORIE_ONLY",
+                    "workflowTrace", List.of("status_polling: pending timeout auto-failed")
+            ));
+        } catch (Exception e) {
+            return "{\"status\":\"FAILED\",\"error\":\"分析任务超时\"}";
+        }
+    }
+
+    private String buildAnalysisImageBase64(MultipartFile file) throws IOException {
+        byte[] originalBytes = file.getBytes();
+        if (originalBytes.length == 0) {
+            return null;
+        }
+
+        try (ByteArrayInputStream input = new ByteArrayInputStream(originalBytes)) {
+            BufferedImage source = ImageIO.read(input);
+            if (source == null) {
+                return Base64.getEncoder().encodeToString(originalBytes);
+            }
+
+            BufferedImage resized = resizeForAnalysis(source);
+            byte[] encodedBytes = encodeJpeg(resized, ANALYSIS_IMAGE_JPEG_QUALITY);
+            return Base64.getEncoder().encodeToString(encodedBytes);
+        } catch (Exception exc) {
+            log.warn("Failed to build inline analysis image payload, falling back to original bytes: {}", exc.getMessage());
+            return Base64.getEncoder().encodeToString(originalBytes);
+        }
+    }
+
+    private BufferedImage resizeForAnalysis(BufferedImage source) {
+        int sourceWidth = source.getWidth();
+        int sourceHeight = source.getHeight();
+        int longSide = Math.max(sourceWidth, sourceHeight);
+        if (longSide <= ANALYSIS_IMAGE_MAX_SIDE && source.getType() == BufferedImage.TYPE_INT_RGB) {
+            return source;
+        }
+
+        double scale = longSide > ANALYSIS_IMAGE_MAX_SIDE
+                ? (double) ANALYSIS_IMAGE_MAX_SIDE / (double) longSide
+                : 1.0;
+        int targetWidth = Math.max(1, (int) Math.round(sourceWidth * scale));
+        int targetHeight = Math.max(1, (int) Math.round(sourceHeight * scale));
+
+        BufferedImage resized = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = resized.createGraphics();
+        try {
+            graphics.setColor(Color.WHITE);
+            graphics.fillRect(0, 0, targetWidth, targetHeight);
+            graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            graphics.drawImage(source, 0, 0, targetWidth, targetHeight, null);
+        } finally {
+            graphics.dispose();
+        }
+        return resized;
+    }
+
+    private byte[] encodeJpeg(BufferedImage image, float quality) throws IOException {
+        try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            var writers = ImageIO.getImageWritersByFormatName("jpg");
+            if (!writers.hasNext()) {
+                ImageIO.write(image, "jpg", output);
+                return output.toByteArray();
+            }
+
+            ImageWriter writer = writers.next();
+            try (ImageOutputStream imageOutput = ImageIO.createImageOutputStream(output)) {
+                writer.setOutput(imageOutput);
+                ImageWriteParam writeParam = writer.getDefaultWriteParam();
+                if (writeParam.canWriteCompressed()) {
+                    writeParam.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+                    writeParam.setCompressionQuality(quality);
+                }
+                writer.write(null, new IIOImage(image, null, null), writeParam);
+            } finally {
+                writer.dispose();
+            }
+            return output.toByteArray();
+        }
     }
 
 }

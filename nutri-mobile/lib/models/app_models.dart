@@ -1,26 +1,90 @@
 class UserProfile {
   final int userId;
+  final String? phone;
+  final String? nickname;
   final String healthGoal;
   final int dailyCalorieTarget;
   final List<String> dietaryRestrictions;
+  final int? heightCm;
+  final double? weightKg;
+  final String? gender;
 
   UserProfile({
     required this.userId,
+    required this.phone,
+    required this.nickname,
     required this.healthGoal,
     required this.dailyCalorieTarget,
     required this.dietaryRestrictions,
+    required this.heightCm,
+    required this.weightKg,
+    required this.gender,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     return UserProfile(
       userId: (json['userId'] ?? 1) as int,
+      phone: json['phone']?.toString(),
+      nickname: json['nickname']?.toString(),
       healthGoal: (json['healthGoal'] ?? 'GENERAL_HEALTH') as String,
       dailyCalorieTarget: (json['dailyCalorieTarget'] ?? 2000) as int,
       dietaryRestrictions: ((json['dietaryRestrictions'] ?? []) as List)
           .map((e) => e.toString())
           .toList(),
+      heightCm: (json['heightCm'] as num?)?.toInt(),
+      weightKg: (json['weightKg'] as num?)?.toDouble(),
+      gender: json['gender']?.toString(),
     );
   }
+}
+
+class AuthCodeDispatch {
+  final String phone;
+  final String debugCode;
+  final int expiresInSeconds;
+  final String message;
+
+  AuthCodeDispatch({
+    required this.phone,
+    required this.debugCode,
+    required this.expiresInSeconds,
+    required this.message,
+  });
+
+  factory AuthCodeDispatch.fromJson(Map<String, dynamic> json) {
+    return AuthCodeDispatch(
+      phone: (json['phone'] ?? '').toString(),
+      debugCode: (json['debugCode'] ?? '').toString(),
+      expiresInSeconds: ((json['expiresInSeconds'] ?? 300) as num).toInt(),
+      message: (json['message'] ?? '').toString(),
+    );
+  }
+}
+
+class AuthSession {
+  final int userId;
+  final String phone;
+  final bool isNewUser;
+
+  AuthSession({
+    required this.userId,
+    required this.phone,
+    required this.isNewUser,
+  });
+
+  factory AuthSession.fromJson(Map<String, dynamic> json) {
+    return AuthSession(
+      userId: ((json['userId'] ?? 0) as num).toInt(),
+      phone: (json['phone'] ?? '').toString(),
+      isNewUser: json['isNewUser'] == true || json['newUser'] == true,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'userId': userId,
+        'phone': phone,
+        'isNewUser': isNewUser,
+      };
 }
 
 class DetectedItem {
@@ -35,6 +99,8 @@ class DetectedItem {
   final double? fatG;
   final double? carbsG;
   final List<double>? bbox;
+  final String? maskRle;
+  final List<int>? maskShape;
 
   DetectedItem({
     required this.classId,
@@ -48,15 +114,31 @@ class DetectedItem {
     required this.fatG,
     required this.carbsG,
     required this.bbox,
+    required this.maskRle,
+    required this.maskShape,
   });
 
   factory DetectedItem.fromJson(Map<String, dynamic> json) {
-    final nutrition = json['nutrition'] as Map<String, dynamic>?;
+    Map<String, dynamic>? asMap(dynamic value) {
+      if (value is Map<String, dynamic>) return value;
+      if (value is Map) return Map<String, dynamic>.from(value);
+      return null;
+    }
+
+    final nutrition = asMap(json['nutrition']);
     final rawBbox = json['bbox'];
 
     List<double>? parseBbox(dynamic value) {
       if (value is List) {
         return value.map((e) => (e as num).toDouble()).toList();
+      }
+      return null;
+    }
+
+    List<int>? parseMaskShape(dynamic value) {
+      if (value is List) {
+        final shape = value.map((e) => (e as num).toInt()).toList();
+        if (shape.length >= 2) return shape.take(2).toList();
       }
       return null;
     }
@@ -74,11 +156,14 @@ class DetectedItem {
       fatG: (json['fat_g'] as num?)?.toDouble() ?? (nutrition?['fat_g'] as num?)?.toDouble(),
       carbsG: (json['carbs_g'] as num?)?.toDouble() ?? (nutrition?['carbs_g'] as num?)?.toDouble(),
       bbox: parseBbox(rawBbox),
+      maskRle: json['mask_rle']?.toString(),
+      maskShape: parseMaskShape(json['mask_shape']),
     );
   }
 }
 
 class AnalysisResult {
+  final String taskId;
   final String status;
   final String? errorMessage;
   final String adviceReport;
@@ -88,8 +173,10 @@ class AnalysisResult {
   final String? confidenceLevel;
   final String? workflowMode;
   final List<String> workflowTrace;
+  final String? segmentationPreviewPngBase64;
 
   AnalysisResult({
+    required this.taskId,
     required this.status,
     required this.errorMessage,
     required this.adviceReport,
@@ -99,13 +186,21 @@ class AnalysisResult {
     required this.confidenceLevel,
     required this.workflowMode,
     required this.workflowTrace,
+    required this.segmentationPreviewPngBase64,
   });
 
   factory AnalysisResult.fromTaskStatus(Map<String, dynamic> json) {
-    final analysis = (json['analysisResult'] ?? {}) as Map<String, dynamic>;
-    final seg = (analysis['segmentationResult'] ?? {}) as Map<String, dynamic>;
-    final items = ((seg['detected_items'] ?? []) as List)
-        .map((e) => DetectedItem.fromJson(e as Map<String, dynamic>))
+    Map<String, dynamic> asMap(dynamic value) {
+      if (value is Map<String, dynamic>) return value;
+      if (value is Map) return Map<String, dynamic>.from(value);
+      return <String, dynamic>{};
+    }
+
+    final analysis = asMap(json['analysisResult']);
+    final seg = asMap(analysis['segmentationResult']);
+    final rawItems = (seg['detected_instances'] ?? seg['detected_items'] ?? []) as List;
+    final items = rawItems
+        .map((e) => DetectedItem.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
 
     final total = items.fold<double>(
@@ -128,6 +223,7 @@ class AnalysisResult {
     }
 
     return AnalysisResult(
+      taskId: (json['taskId'] ?? analysis['taskId'] ?? '').toString(),
       status: (json['status'] ?? 'PENDING').toString(),
       errorMessage: (json['errorMessage']
           ?? analysis['errorMessage']
@@ -141,6 +237,7 @@ class AnalysisResult {
       confidenceLevel: analysis['confidenceLevel']?.toString(),
       workflowMode: analysis['workflowMode']?.toString(),
       workflowTrace: parseStringList(analysis['workflowTrace']),
+      segmentationPreviewPngBase64: seg['segmentation_preview_png_base64']?.toString(),
     );
   }
 }

@@ -28,6 +28,9 @@ public class ImageAnalysisTaskMessage {
     /** Raw OSS object key for durable references. */
     private String ossKey;
 
+    /** Optional resized JPEG payload for downstream inference without OSS re-fetch. */
+    private String analysisImageBase64;
+
     /** BREAKFAST | LUNCH | DINNER | SNACK */
     private String mealType;
 
@@ -47,5 +50,10 @@ public class ImageAnalysisTaskMessage {
         private List<String> dietaryRestrictions;
         private String healthGoal;
         private Integer dailyCalorieTarget;
+        private Integer age;
+        private Integer heightCm;
+        private Double weightKg;
+        private String gender;
+        private String activityLevel;
     }
 }

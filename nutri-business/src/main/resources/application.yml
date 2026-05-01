@@ -8,6 +8,10 @@ spring:
   application:
     name: nutri-business
 
+  sql:
+    init:
+      mode: always
+
   # ── MySQL ────────────────────────────────────────────────────────────────
   datasource:
     url: jdbc:mysql://localhost:3307/nutri_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai

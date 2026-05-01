@@ -3,9 +3,9 @@
     <section class="page-hero">
       <div class="page-hero__copy">
         <span class="page-hero__eyebrow">历史回看</span>
-        <h2 class="page-hero__title">把每一次分析结果当作后续建议的上下文，而不只是一次性查看</h2>
+        <h2 class="page-hero__title">把每一次餐食记录沉淀下来，方便你持续回看和调整</h2>
         <p class="page-hero__subtitle">
-          网页端把历史记录整理成更适合扫读的卡片列表，方便在大屏上快速回看餐次、状态和建议摘要。
+          历史记录会跟随你的账号保存。你可以按时间回看餐次、识别结果和建议摘要，持续观察近期饮食变化。
         </p>
         <div class="page-actions">
           <button class="button button--secondary" :disabled="loading" @click="load(true)">
@@ -16,9 +16,14 @@
 
       <aside class="hero-aside">
         <div class="metric-card">
+          <span>当前账号</span>
+          <strong>{{ accountLabel }}</strong>
+          <p>{{ isAuthenticated ? '这里只会显示当前已验证账号下的历史记录。' : '先完成手机号验证，再查看你的个人历史数据。' }}</p>
+        </div>
+        <div class="metric-card">
           <span>当前页</span>
           <strong>第 {{ page + 1 }} 页</strong>
-          <p>按时间倒序浏览饮食记录，适合连续比对近期餐食结构。</p>
+          <p>按时间倒序浏览饮食记录，更容易对比近期餐食结构和变化趋势。</p>
         </div>
         <div class="metric-card">
           <span>本页记录</span>
@@ -26,21 +31,27 @@
           <p>{{ hasNext ? '还有更多记录可继续翻页。' : '当前已经浏览到最新可见范围。' }}</p>
         </div>
         <div class="metric-card">
-          <span>个性化价值</span>
-          <strong>会参与后续建议</strong>
-          <p>历史饮食模式会影响后续建议内容，所以这页不只是归档列表，也是上下文来源。</p>
+          <span>长期价值</span>
+          <strong>帮助观察饮食变化</strong>
+          <p>连续记录能帮助你判断哪些餐次更容易偏高、偏低，后续调整会更有依据。</p>
         </div>
       </aside>
     </section>
 
     <p v-if="error" class="soft-note soft-note--error">{{ error }}</p>
 
-    <section v-if="loading" class="surface-card empty-state">
+    <section v-if="!isAuthenticated" class="surface-card empty-state auth-empty-state">
+      <h3>先验证手机号账号</h3>
+      <p>历史记录、昵称和目标设置都会跟随你的个人账号保存。完成验证后，这里只会显示当前账号下的数据。</p>
+      <RouterLink to="/profile" class="button button--primary">去个人主页验证</RouterLink>
+    </section>
+
+    <section v-else-if="loading" class="surface-card empty-state">
       正在加载历史记录，请稍候…
     </section>
 
     <section v-else-if="records.length === 0" class="surface-card empty-state">
-      还没有历史记录。完成第一次分析后，这里会按时间沉淀你的饮食轨迹。
+      当前账号还没有历史记录。完成第一次分析后，这里会按时间沉淀你的饮食轨迹。
     </section>
 
     <section v-else class="history-grid">
@@ -77,10 +88,13 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
-import { getDietLogHistory } from '@/api/dietLog'
+import { computed, onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
+import { getDietLogHistory, getStoredWebSession } from '@/api/dietLog'
 
-const userId = localStorage.getItem('userId') || '1'
+const session = getStoredWebSession()
+const userId = ref(session.userId)
+const phone = ref(session.phone)
 
 const loading = ref(false)
 const error = ref('')
@@ -89,14 +103,22 @@ const page = ref(0)
 const size = ref(10)
 const hasNext = ref(false)
 
-onMounted(() => load(true))
+const isAuthenticated = computed(() => Boolean(userId.value && phone.value))
+const accountLabel = computed(() => phone.value || (userId.value ? `账号 #${userId.value}` : '未验证账号'))
+
+onMounted(() => {
+  if (isAuthenticated.value) {
+    load(true)
+  }
+})
 
 async function load(reset = false) {
+  if (!isAuthenticated.value) return
   loading.value = true
   error.value = ''
   try {
     if (reset) page.value = 0
-    const data = await getDietLogHistory(userId, page.value, size.value)
+    const data = await getDietLogHistory(userId.value, page.value, size.value)
     records.value = data.content || []
     hasNext.value = !!data.hasNext
   } catch (e) {
@@ -165,6 +187,12 @@ function previewAdvice(value) {
 .history-grid {
   display: grid;
   gap: 14px;
+}
+
+.auth-empty-state {
+  display: grid;
+  gap: 14px;
+  justify-items: start;
 }
 
 .history-grid {

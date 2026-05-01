@@ -7,10 +7,6 @@ langchain-community==0.3.27  # >=0.3.27 fixes XXE attacks (< 0.3.27)
 # ── MCP client ───────────────────────────────────────────────────────────────
 mcp==1.23.0  # >=1.23.0 fixes DNS rebinding (< 1.23.0); >=1.9.4 fixes FastMCP DoS; >=1.10.0 fixes HTTP DoS
 
-# ── Vector store (RAG) ───────────────────────────────────────────────────────
-chromadb==0.5.3
-sentence-transformers==3.0.1
-
 # ── RabbitMQ async consumer ──────────────────────────────────────────────────
 aio-pika==9.4.1
 

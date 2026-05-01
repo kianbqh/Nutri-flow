@@ -5,9 +5,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
@@ -73,10 +75,38 @@ public class OssService {
         return s3Presigner.presignGetObject(presignRequest).url().toString();
     }
 
+    public DownloadedObject downloadObject(String ossKey) {
+        ResponseBytes<GetObjectResponse> objectBytes = s3Client.getObjectAsBytes(
+                GetObjectRequest.builder()
+                        .bucket(bucketName)
+                        .key(ossKey)
+                        .build()
+        );
+        return new DownloadedObject(objectBytes.asByteArray(), objectBytes.response().contentType());
+    }
+
     private String extractExtension(String filename) {
         if (filename == null || !filename.contains(".")) {
             return "jpg";
         }
         return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+    }
+
+    public static final class DownloadedObject {
+        private final byte[] bytes;
+        private final String contentType;
+
+        public DownloadedObject(byte[] bytes, String contentType) {
+            this.bytes = bytes;
+            this.contentType = contentType;
+        }
+
+        public byte[] getBytes() {
+            return bytes;
+        }
+
+        public String getContentType() {
+            return contentType;
+        }
     }
 }

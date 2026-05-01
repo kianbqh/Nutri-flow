@@ -17,11 +17,11 @@ import torch
 from torch.utils.tensorboard.writer import SummaryWriter
 
 try:
-    from train_stage5a import evaluate
+    from train_stage5a import evaluate, load_checkpoint_compatible
     from model_trainable import create_model_trainable
     from data_loader import create_data_loaders
 except ImportError:
-    from app.training.train_stage5a import evaluate
+    from app.training.train_stage5a import evaluate, load_checkpoint_compatible
     from app.training.model_trainable import create_model_trainable
     from app.training.data_loader import create_data_loaders
 
@@ -42,6 +42,7 @@ def main() -> None:
     parser.add_argument('--img_size', type=int, default=224)
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--max_val_batches', type=int, default=0, help='0 means full validation set')
+    parser.add_argument('--mask_head_mode', type=str, default='binary', choices=['binary', 'semantic'])
     args = parser.parse_args()
 
     device = args.device
@@ -70,14 +71,12 @@ def main() -> None:
         pretrained=True,
         backbone_name=args.backbone,
         img_size=args.img_size,
+        mask_head_mode=args.mask_head_mode,
     )
     model.to(device)
 
     ckpt = torch.load(args.checkpoint, map_location=device)
-    if isinstance(ckpt, dict) and 'model_state' in ckpt:
-        model.load_state_dict(ckpt['model_state'])
-    else:
-        model.load_state_dict(ckpt)
+    load_checkpoint_compatible(model, ckpt, context='eval_checkpoint')
     logger.info('Checkpoint loaded successfully')
 
     log_dir = run_dir / f"logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}"

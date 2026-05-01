@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `username`     VARCHAR(64)  NOT NULL UNIQUE,
   `email`        VARCHAR(128) NOT NULL UNIQUE,
   `password_hash` VARCHAR(256) NOT NULL,
+  `phone`        VARCHAR(20)  DEFAULT NULL,
+  `nickname`     VARCHAR(24)  DEFAULT NULL,
   `health_goal`  VARCHAR(32)  DEFAULT 'GENERAL_HEALTH',
   `daily_calorie_target` INT DEFAULT 2000,
   `dietary_restrictions` JSON DEFAULT NULL,
@@ -21,15 +23,16 @@ CREATE TABLE IF NOT EXISTS `users` (
   `gender`       VARCHAR(10)  DEFAULT NULL COMMENT 'MALE | FEMALE | OTHER',
   `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_users_nickname` (`nickname`),
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Default demo user for MVP end-to-end testing (X-User-Id: 1)
 INSERT INTO `users` (
-  `id`, `username`, `email`, `password_hash`, `health_goal`, `daily_calorie_target`, `dietary_restrictions`
+  `id`, `username`, `email`, `password_hash`, `phone`, `health_goal`, `daily_calorie_target`, `dietary_restrictions`
 )
 SELECT
-  1, 'demo_user', 'demo@nutriflow.local', 'demo_hash_placeholder',
+  1, 'demo_user', 'demo@nutriflow.local', 'demo_hash_placeholder', '13800000001',
   'WEIGHT_LOSS', 1800, JSON_ARRAY('high_sugar')
 WHERE NOT EXISTS (SELECT 1 FROM `users` WHERE `id` = 1);
 
