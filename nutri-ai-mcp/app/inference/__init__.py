@@ -33,6 +33,12 @@ import torch.nn as nn
 logger = logging.getLogger(__name__)
 
 
+def _checkpoint_is_required() -> bool:
+    return os.getenv("NUTRI_REQUIRE_CHECKPOINT", "false").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Coordinate Attention (CA) block
 # Reference: Hou et al., "Coordinate Attention for Efficient Mobile Network Design"
@@ -617,8 +623,14 @@ def get_model() -> NutriSegModel:
                             target_classes = int(head_w.shape[0])
                 except Exception as exc:
                     logger.warning("Failed to inspect checkpoint %s: %s", ckpt, exc)
+                    if _checkpoint_is_required():
+                        raise RuntimeError(f"Required checkpoint inspection failed: {ckpt}") from exc
             else:
                 logger.warning("NUTRI_SEG_CHECKPOINT does not exist: %s", ckpt)
+                if _checkpoint_is_required():
+                    raise FileNotFoundError(f"Required checkpoint does not exist: {ckpt}")
+        elif _checkpoint_is_required():
+            raise RuntimeError("NUTRI_SEG_CHECKPOINT is required but not configured")
 
         input_size = int(os.getenv("NUTRI_SEG_INPUT_SIZE", "512") or "512")
         input_size = max(224, min(1024, input_size))
@@ -641,6 +653,8 @@ def get_model() -> NutriSegModel:
                     )
                 except Exception as exc:
                     logger.warning("Failed to load checkpoint %s: %s", ckpt, exc)
+                    if _checkpoint_is_required():
+                        raise RuntimeError(f"Required checkpoint failed to load: {ckpt}") from exc
         _model.eval()
         logger.info("NutriSegModel ready (model_version=%s)", _model_version)
     return _model

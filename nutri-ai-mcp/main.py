@@ -7,6 +7,7 @@ Starts:
 """
 
 import logging
+import os
 
 import numpy as np
 import uvicorn
@@ -51,6 +52,10 @@ def warmup_segmentation_model() -> None:
         logger.info("Segmentation model warmup complete (%s)", model_version)
     except Exception as exc:
         logger.exception("Segmentation model warmup failed: %s", exc)
+        if os.getenv("NUTRI_REQUIRE_CHECKPOINT", "false").strip().lower() in {
+            "1", "true", "yes", "on",
+        }:
+            raise
 
 
 if __name__ == "__main__":
