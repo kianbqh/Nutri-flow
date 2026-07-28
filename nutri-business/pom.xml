@@ -48,6 +48,12 @@
       <artifactId>spring-boot-starter-security</artifactId>
     </dependency>
 
+    <!-- Production health and readiness endpoints -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
     <!-- Spring AMQP / RabbitMQ -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

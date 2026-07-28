@@ -8,6 +8,11 @@ spring:
   application:
     name: nutri-business
 
+  servlet:
+    multipart:
+      max-file-size: ${NUTRI_MAX_FILE_SIZE:12MB}
+      max-request-size: ${NUTRI_MAX_REQUEST_SIZE:15MB}
+
   sql:
     init:
       mode: always
@@ -63,6 +68,13 @@ oss:
   bucket-name: ${NUTRI_OSS_BUCKET:nutri-bucket}
   region: ${NUTRI_OSS_REGION:us-east-1}
 
+nutri:
+  auth:
+    expose-debug-code: ${NUTRI_AUTH_EXPOSE_DEBUG_CODE:true}
+  security:
+    cors:
+      allowed-origins: ${NUTRI_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+
 # ── RabbitMQ exchange / queue names ─────────────────────────────────────────
 mq:
   exchange:
@@ -84,5 +96,16 @@ springdoc:
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging:
   level:
-    com.nutriflow: DEBUG
+    com.nutriflow: ${NUTRI_LOG_LEVEL:DEBUG}
     org.springframework.amqp: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never

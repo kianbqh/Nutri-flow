@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,6 +36,9 @@ public class AuthController {
     private final StringRedisTemplate stringRedisTemplate;
     private final UserNicknameService userNicknameService;
 
+    @Value("${nutri.auth.expose-debug-code:true}")
+    private boolean exposeDebugCode;
+
     @PostMapping("/send-code")
     public ResponseEntity<?> sendCode(@Valid @RequestBody SendCodeRequest request) {
         String phone = normalizePhone(request.getPhone());
@@ -47,9 +51,11 @@ public class AuthController {
 
         return ResponseEntity.ok(new SendCodeResponse(
                 phone,
-                code,
+                exposeDebugCode ? code : null,
                 CODE_TTL.toSeconds(),
-                "开发环境未接入真实短信通道，验证码直接返回用于测试"
+                exposeDebugCode
+                        ? "受保护的测试环境暂未接入短信，验证码直接返回给测试用户"
+                        : "验证码已发送"
         ));
     }
 

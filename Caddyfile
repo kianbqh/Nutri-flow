@@ -1,0 +1,47 @@
+{
+	email {$ACME_EMAIL}
+	admin off
+}
+
+{$NUTRI_DOMAIN} {
+	encode zstd gzip
+
+	request_body {
+		max_size 15MB
+	}
+
+	basic_auth {
+		{$NUTRI_BASIC_AUTH_USER} {$NUTRI_BASIC_AUTH_HASH}
+	}
+
+	@api path /api/*
+	handle @api {
+		reverse_proxy business:8080 {
+			transport http {
+				response_header_timeout 360s
+			}
+		}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	header {
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+		Strict-Transport-Security "max-age=31536000"
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

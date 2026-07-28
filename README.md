@@ -110,6 +110,15 @@ powershell -ExecutionPolicy Bypass -File scripts/dev-down.ps1
 
 Managed logs are written to `.runtime/logs`.
 
+## Protected Public Deployment
+
+The repository includes a production-oriented Compose profile with multi-stage
+application images, Caddy-managed HTTPS, a Basic Auth staging gate, private
+infrastructure networking, model fail-fast checks, and persistent volumes.
+
+See [docs/PUBLIC_DEPLOYMENT.md](docs/PUBLIC_DEPLOYMENT.md) for the server,
+secrets, model-transfer, startup, verification, backup, and rollback steps.
+
 ## Validation
 
 Useful local checks:
