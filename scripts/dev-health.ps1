@@ -6,6 +6,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$inferencePort = 18001
+$businessPort = 18080
 
 function Test-PortListening {
     param([int]$Port)
@@ -62,28 +64,28 @@ function Get-RabbitQueueState {
 
 $rows = @()
 
-$pid8001 = Test-PortListening -Port 8001
+$pid8001 = Test-PortListening -Port $inferencePort
 $rows += [pscustomobject]@{
-    Check = "Port 8001 (inference)"
+    Check = "Port $inferencePort (inference)"
     Status = if ($pid8001) { "OK" } else { "DOWN" }
     Detail = if ($pid8001) { "TCP connect success" } else { "No listener" }
 }
 
-$pid8080 = Test-PortListening -Port 8080
+$pid8080 = Test-PortListening -Port $businessPort
 $rows += [pscustomobject]@{
-    Check = "Port 8080 (business)"
+    Check = "Port $businessPort (business)"
     Status = if ($pid8080) { "OK" } else { "DOWN" }
     Detail = if ($pid8080) { "TCP connect success" } else { "No listener" }
 }
 
-$healthInf = Test-HttpJson -Url "http://127.0.0.1:8001/health"
+$healthInf = Test-HttpJson -Url "http://127.0.0.1:$inferencePort/health"
 $rows += [pscustomobject]@{
     Check = "GET /health"
     Status = if ($healthInf.ok) { "OK" } else { "FAIL" }
     Detail = if ($healthInf.ok) { "inference reachable" } else { $healthInf.error }
 }
 
-$healthBiz = Test-HttpJson -Url "http://127.0.0.1:8080/api/v1/diet-logs?page=0&size=1&userId=1"
+$healthBiz = Test-HttpJson -Url "http://127.0.0.1:$businessPort/api/v1/diet-logs?page=0&size=1&userId=1"
 $rows += [pscustomobject]@{
     Check = "GET /api/v1/diet-logs"
     Status = if ($healthBiz.ok) { "OK" } else { "FAIL" }

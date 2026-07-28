@@ -49,7 +49,7 @@
 
           <div v-if="!hasSession" class="locked-panel">
             <h4>先完成账号验证</h4>
-            <p>目标设置会跟随当前账号保存。先去个人主页完成手机号验证，再回来设置目标会更稳妥。</p>
+            <p>目标设置会和当前账号一起保存。先去个人主页完成手机号验证，再回来继续设置即可。</p>
             <div class="page-actions profile-actions">
               <RouterLink to="/profile" class="button button--primary">去个人主页验证</RouterLink>
             </div>

@@ -1,10 +1,10 @@
-# ─── Node / Frontend ────────────────────────────────────────────────────────
+# Node / frontend
 node_modules/
 dist/
 .vite/
 *.local
 
-# ─── Python ─────────────────────────────────────────────────────────────────
+# Python
 __pycache__/
 *.py[cod]
 *.pyo
@@ -21,7 +21,7 @@ build/
 .mypy_cache/
 *.log
 
-# ─── Java / Maven ────────────────────────────────────────────────────────────
+# Java / Maven
 target/
 *.class
 *.jar
@@ -30,7 +30,7 @@ target/
 .mvn/
 !.mvn/wrapper/maven-wrapper.jar
 
-# ─── IDE ─────────────────────────────────────────────────────────────────────
+# IDE and OS files
 .idea/
 *.iml
 .vscode/
@@ -39,21 +39,27 @@ target/
 .DS_Store
 Thumbs.db
 
-# ─── Docker ──────────────────────────────────────────────────────────────────
+# Docker and local runtime
 .docker/
 .runtime/
 
-# ─── Model weights (large binary files) ─────────────────────────────────────
+# Model weights and large binary artifacts
 *.pth
 *.pt
 *.ckpt
 *.bin
 *.safetensors
 
-# ─── ChromaDB persistent store ───────────────────────────────────────────────
+# ChromaDB persistent store
 chroma_db/
 
-# ─── Local tooling / large training artifacts ───────────────────────────────
+# Local tooling, datasets, and large training artifacts
 .tools/
-nutri-ai-mcp/data/
+nutri-ai-mcp/data/*
+!nutri-ai-mcp/data/smoke/
+!nutri-ai-mcp/data/smoke/**
 nutri-ai-mcp/weights_by_category/
+
+# Private thesis drafts and local document-generation artifacts
+docs/毕业论文/
+scripts/generate_thesis_word_docs.py

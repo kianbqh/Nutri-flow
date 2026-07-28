@@ -27,6 +27,11 @@ const routes = [
     name: 'history',
     component: () => import('@/views/HistoryView.vue'),
   },
+  {
+    path: '/results/:taskId',
+    name: 'task-result',
+    component: () => import('@/views/TaskResultView.vue'),
+  },
 ]
 
 const router = createRouter({

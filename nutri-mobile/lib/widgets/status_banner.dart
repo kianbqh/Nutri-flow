@@ -13,6 +13,7 @@ class StatusBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cfg = _config(status);
+    final visibleMessage = status == 'COMPLETED' ? null : message;
 
     return Container(
       width: double.infinity,
@@ -32,9 +33,9 @@ class StatusBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(cfg.title, style: TextStyle(color: cfg.fg, fontWeight: FontWeight.w600)),
-                if (message != null && message!.trim().isNotEmpty) ...[
+                if (visibleMessage != null && visibleMessage.trim().isNotEmpty) ...[
                   const SizedBox(height: 2),
-                  Text(message!, style: const TextStyle(color: Colors.black87)),
+                  Text(visibleMessage, style: const TextStyle(color: Colors.black87)),
                 ],
               ],
             ),

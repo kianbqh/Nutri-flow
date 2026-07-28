@@ -119,7 +119,7 @@ def infer_profile(class_name: str) -> tuple[float, float, str, str]:
 
 	nuts = {"almond", "cashew", "walnut", "peanut"}
 	meats = {"steak", "pork", "chicken duck", "sausage", "fried meat", "lamb", "fish", "shellfish", "shrimp", "crab"}
-	staples = {"bread", "pizza", "pasta", "noodles", "rice", "pie", "hamburg", "wonton dumplings", "hanamaki baozi", "potato", "corn"}
+	staples = {"bread", "french fries", "pizza", "pasta", "noodles", "rice", "pie", "hamburg", "wonton dumplings", "hanamaki baozi", "potato", "corn"}
 	dairy_sweets = {"candy", "chocolate", "biscuit", "pudding", "ice cream", "cake", "cheese butter", "egg tart", "milkshake"}
 	drinks = {"wine", "coffee", "juice", "milk", "tea", "soup"}
 	fruits = {"apple", "date", "apricot", "avocado", "banana", "strawberry", "cherry", "blueberry", "raspberry", "mango", "olives", "peach", "lemon", "pear", "fig", "pineapple", "grape", "kiwi", "melon", "orange", "watermelon"}

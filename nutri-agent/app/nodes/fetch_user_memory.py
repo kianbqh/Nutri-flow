@@ -145,7 +145,10 @@ def _build_body_condition_lines(user_context: dict | None) -> List[str]:
 async def _fetch_history_from_business(user_id: str) -> List[dict]:
     url = f"{_settings.business_base_url.rstrip('/')}/diet-logs"
     params = {"userId": user_id, "page": 0, "size": _settings.business_history_size}
-    async with httpx.AsyncClient(timeout=_settings.business_timeout_seconds) as client:
+    async with httpx.AsyncClient(
+        timeout=_settings.business_timeout_seconds,
+        trust_env=False,
+    ) as client:
         resp = await client.get(url, params=params)
         resp.raise_for_status()
         body = resp.json()

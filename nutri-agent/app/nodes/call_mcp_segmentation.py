@@ -1,8 +1,7 @@
 """
 Node: call_mcp_segmentation
 
-Calls the nutri-ai-mcp MCP server's ``segment_food_image`` tool to obtain
-food-instance segmentation results.
+Calls the nutri-ai-mcp segmentation service to obtain food-instance results.
 """
 
 from __future__ import annotations
@@ -17,6 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 import httpx
 import numpy as np
@@ -32,11 +32,11 @@ logger = logging.getLogger(__name__)
 
 
 class McpSettings(BaseSettings):
-    mcp_server_url: str = "http://localhost:8000"
+    mcp_server_url: str = "http://127.0.0.1:18001"
     mcp_project_dir: str = str(Path(__file__).resolve().parents[3] / "nutri-ai-mcp")
     mcp_checkpoint: str = str(
         Path(__file__).resolve().parents[3]
-        / "nutri-ai-mcp/weights_by_category/foodseg103/stage6s6/stage6s6_tiny_img512_phaseC_20ep/best_stage6s6_tiny_img512_phaseC_20ep.pth"
+        / "nutri-ai-mcp/weights_by_category/foodseg103/stage7s1/stage7s1_tiny_img512_mask135_cls095_phaseA_12ep/best_stage7s1_tiny_img512_mask135_cls095_phaseA_12ep.pth"
     )
     mcp_input_size: str = "512"
 
@@ -125,7 +125,7 @@ def _looks_retryable_http_error(exc: Exception) -> bool:
 
 async def _is_mcp_healthy() -> bool:
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=3.0, trust_env=False) as client:
             resp = await client.get(f"{_settings.mcp_server_url}/health")
             return resp.status_code == 200
     except Exception:
@@ -135,8 +135,11 @@ async def _is_mcp_healthy() -> bool:
 def _spawn_local_mcp_server() -> bool:
     project_dir = Path(_settings.mcp_project_dir).resolve()
     if not project_dir.exists():
-        logger.error("Local MCP project dir not found: %s", project_dir)
+        logger.error("Local segmentation project dir not found: %s", project_dir)
         return False
+
+    parsed = urlparse(_settings.mcp_server_url)
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
 
     env = os.environ.copy()
     if _settings.mcp_checkpoint:
@@ -151,7 +154,7 @@ def _spawn_local_mcp_server() -> bool:
         "--host",
         "0.0.0.0",
         "--port",
-        "8001",
+        str(port),
     ]
 
     popen_kwargs = {
@@ -167,7 +170,7 @@ def _spawn_local_mcp_server() -> bool:
         subprocess.Popen(cmd, **popen_kwargs)
         return True
     except Exception as exc:
-        logger.error("Failed to spawn local MCP server: %s", exc)
+        logger.error("Failed to spawn local segmentation server: %s", exc)
         return False
 
 
@@ -211,12 +214,16 @@ async def _run_local_segmentation_fallback(
     confidence_threshold: float,
 ) -> dict:
     project_dir = Path(_settings.mcp_project_dir).resolve()
+    if _settings.mcp_checkpoint:
+        os.environ["NUTRI_SEG_CHECKPOINT"] = _settings.mcp_checkpoint
+    if _settings.mcp_input_size:
+        os.environ["NUTRI_SEG_INPUT_SIZE"] = str(_settings.mcp_input_size)
     run_inference = _load_local_inference_runner(project_dir)
 
     if image_base64:
         image_bytes = base64.b64decode(image_base64)
     else:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
             img_resp = await client.get(image_url)
             img_resp.raise_for_status()
             image_bytes = img_resp.content
@@ -248,10 +255,10 @@ async def _run_local_segmentation_fallback(
 
 async def call_mcp_segmentation(state: "AgentState") -> dict:
     """
-    Invoke the MCP ``segment_food_image`` tool on nutri-ai-mcp.
+    Invoke the segmentation endpoint on nutri-ai-mcp.
 
-    Uses a direct HTTP call to the MCP SSE endpoint; a full MCP client SDK
-    can replace this for richer protocol handling.
+    The service also exposes an MCP tool, but the production path uses the
+    REST endpoint because it supports inline base64 images and simpler retries.
     """
     task_id: str = state["task_id"]
     image_url: str = state["image_url"]
@@ -260,7 +267,7 @@ async def call_mcp_segmentation(state: "AgentState") -> dict:
     confidence_threshold: float = user_context.get("confidence_threshold", 0.5)
     workflow_trace = list(state.get("workflow_trace") or [])
 
-    logger.info("Calling MCP segment_food_image for task_id=%s", task_id)
+    logger.info("Calling segmentation service for task_id=%s", task_id)
 
     payload = {
         "task_id": task_id,
@@ -277,7 +284,7 @@ async def call_mcp_segmentation(state: "AgentState") -> dict:
 
     for attempt in range(2):
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=60.0, trust_env=False) as client:
                 resp = await client.post(
                     f"{_settings.mcp_server_url}/v1/segment",
                     json=payload,
@@ -297,19 +304,19 @@ async def call_mcp_segmentation(state: "AgentState") -> dict:
         except Exception as exc:
             last_exc = exc
             if attempt == 0 and _looks_connection_error(exc):
-                logger.warning("MCP service unreachable, attempting self-heal start ...")
+                logger.warning("Segmentation service unreachable, attempting self-heal start ...")
                 healed = await _ensure_mcp_available()
                 if healed:
-                    logger.warning("MCP self-heal succeeded, retrying segmentation once")
+                    logger.warning("Segmentation service self-heal succeeded; retrying once")
                     continue
             break
 
     if segmentation_result is None:
-        exc = last_exc or RuntimeError("MCP segmentation unknown failure")
+        exc = last_exc or RuntimeError("Segmentation service unknown failure")
         used_local_fallback = False
         if _looks_connection_error(exc) or _looks_retryable_http_error(exc):
             try:
-                logger.warning("MCP segmentation failed, trying direct local inference fallback")
+                logger.warning("Segmentation service failed; trying direct local inference fallback")
                 segmentation_result = await _run_local_segmentation_fallback(
                     task_id=task_id,
                     image_url=image_url,
@@ -324,7 +331,7 @@ async def call_mcp_segmentation(state: "AgentState") -> dict:
         if used_local_fallback:
             workflow_trace.append("call_mcp_segmentation: 分割服务异常，已切换本地推理兜底并恢复")
         else:
-            logger.error("MCP segmentation call failed: %s", exc)
+            logger.error("Segmentation call failed: %s", exc)
             err = str(exc)
             if "502" in err:
                 err = "分割服务网关异常（502），已尝试兜底但未恢复，请检查推理服务日志"

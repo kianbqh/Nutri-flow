@@ -10,10 +10,13 @@ $runtimeDir = Join-Path $repoRoot ".runtime"
 $logDir = Join-Path $runtimeDir "logs"
 $pidDir = Join-Path $runtimeDir "pids"
 $supervisorDir = Join-Path $runtimeDir "supervisors"
+$agentMain = Join-Path $repoRoot "nutri-agent/main.py"
 
 $pythonExe = Join-Path $repoRoot "../envs/test/python.exe"
 $mavenCmd = Join-Path $repoRoot ".tools/apache-maven-3.9.9/bin/mvn.cmd"
 $checkpoint = Join-Path $repoRoot "nutri-ai-mcp/weights_by_category/foodseg103/stage7s1/stage7s1_tiny_img512_mask135_cls095_phaseA_12ep/best_stage7s1_tiny_img512_mask135_cls095_phaseA_12ep.pth"
+$inferencePort = 18001
+$businessPort = 18080
 
 $pathsToCreate = @($runtimeDir, $logDir, $pidDir, $supervisorDir)
 foreach ($p in $pathsToCreate) {
@@ -21,6 +24,26 @@ foreach ($p in $pathsToCreate) {
         New-Item -ItemType Directory -Path $p -Force | Out-Null
     }
 }
+
+function Repair-ProcessPathEnvironment {
+    $envVars = [Environment]::GetEnvironmentVariables("Process")
+    $pathKeys = @($envVars.Keys | Where-Object { [string]$_ -ieq "Path" })
+    if ($pathKeys.Count -le 1) {
+        return
+    }
+
+    $pathValue = [Environment]::GetEnvironmentVariable("Path", "Process")
+    if ([string]::IsNullOrWhiteSpace($pathValue)) {
+        $pathValue = [Environment]::GetEnvironmentVariable("PATH", "Process")
+    }
+
+    foreach ($key in $pathKeys) {
+        [Environment]::SetEnvironmentVariable([string]$key, $null, "Process")
+    }
+    [Environment]::SetEnvironmentVariable("Path", $pathValue, "Process")
+}
+
+Repair-ProcessPathEnvironment
 
 function Assert-PathExists {
     param([string]$PathValue, [string]$Name)
@@ -32,6 +55,7 @@ function Assert-PathExists {
 Assert-PathExists -PathValue $pythonExe -Name "Python"
 Assert-PathExists -PathValue $mavenCmd -Name "Maven"
 Assert-PathExists -PathValue $checkpoint -Name "Segmentation checkpoint"
+Assert-PathExists -PathValue $agentMain -Name "Agent entry"
 
 function Get-PidFile {
     param([string]$Name)
@@ -223,69 +247,71 @@ Set-Location '$repoRoot/nutri-ai-mcp'
 `$env:NUTRI_SEG_CHECKPOINT = '$checkpoint'
 `$env:NUTRI_SEG_INPUT_SIZE = '512'
 while (`$true) {
-    & '$pythonExe' -m uvicorn main:app --host 0.0.0.0 --port 8001
+    & '$pythonExe' -m uvicorn main:app --host 0.0.0.0 --port $inferencePort
     `$exitCode = `$LASTEXITCODE
     Write-Output "[inference-supervisor] uvicorn exited with code=`$exitCode, restarting ..."
     Start-Sleep -Seconds 2
 }
 "@
-if (Wait-Http -Url "http://127.0.0.1:8001/health" -TimeoutSec 2) {
+if (Wait-Http -Url "http://127.0.0.1:$inferencePort/health" -TimeoutSec 2) {
     $managedInf = Read-ManagedPid -Name "inference"
     if ($managedInf) {
-        Write-Host "[skip] inference already healthy on 8001"
+        Write-Host "[skip] inference already healthy on $inferencePort"
     } else {
         Write-Output "[heal] inference is healthy but unmanaged; taking over supervision"
-        $listener = Get-PortListenerPid -Port 8001
+        $listener = Get-PortListenerPid -Port $inferencePort
         if ($listener) {
             Stop-Process -Id $listener -Force -ErrorAction SilentlyContinue
             Start-Sleep -Milliseconds 600
         }
-        $null = Start-ManagedPowerShell -Name "inference" -WorkingDir $repoRoot -Command $inferenceCmd -HealthCheckScript { Wait-Http -Url "http://127.0.0.1:8001/health" -TimeoutSec 2 }
+        $null = Start-ManagedPowerShell -Name "inference" -WorkingDir $repoRoot -Command $inferenceCmd -HealthCheckScript { Wait-Http -Url "http://127.0.0.1:$inferencePort/health" -TimeoutSec 2 }
     }
 } else {
-    $listener = Get-PortListenerPid -Port 8001
+    $listener = Get-PortListenerPid -Port $inferencePort
     if ($listener) {
-        throw "Port 8001 is occupied by PID=$listener but inference health check failed"
+        throw "Port $inferencePort is occupied by PID=$listener but inference health check failed"
     }
-    $null = Start-ManagedPowerShell -Name "inference" -WorkingDir $repoRoot -Command $inferenceCmd -HealthCheckScript { Wait-Http -Url "http://127.0.0.1:8001/health" -TimeoutSec 2 }
+    $null = Start-ManagedPowerShell -Name "inference" -WorkingDir $repoRoot -Command $inferenceCmd -HealthCheckScript { Wait-Http -Url "http://127.0.0.1:$inferencePort/health" -TimeoutSec 2 }
 }
 
 $businessCmd = @"
 Set-Location '$repoRoot/nutri-business'
 while (`$true) {
-    & '$mavenCmd' '-Dmaven.repo.local=$repoRoot/.tools/m2/repository' spring-boot:run
+    & '$mavenCmd' '-Dmaven.repo.local=$repoRoot/.tools/m2/repository' spring-boot:run '-Dspring-boot.run.arguments=--server.port=$businessPort'
     `$exitCode = `$LASTEXITCODE
     Write-Output "[business-supervisor] spring-boot:run exited with code=`$exitCode, restarting ..."
     Start-Sleep -Seconds 2
 }
 "@
-if (Wait-Http -Url "http://127.0.0.1:8080/api/v1/diet-logs?page=0&size=1&userId=1" -TimeoutSec 2) {
+if (Wait-Http -Url "http://127.0.0.1:$businessPort/api/v1/diet-logs?page=0&size=1&userId=1" -TimeoutSec 2) {
     $managedBiz = Read-ManagedPid -Name "business"
     if ($managedBiz) {
-        Write-Host "[skip] business already healthy on 8080"
+        Write-Host "[skip] business already healthy on $businessPort"
     } else {
         Write-Output "[heal] business is healthy but unmanaged; taking over supervision"
-        $listener = Get-PortListenerPid -Port 8080
+        $listener = Get-PortListenerPid -Port $businessPort
         if ($listener) {
             Stop-Process -Id $listener -Force -ErrorAction SilentlyContinue
             Start-Sleep -Milliseconds 600
         }
-        $null = Start-ManagedPowerShell -Name "business" -WorkingDir $repoRoot -Command $businessCmd -HealthCheckScript { Wait-Http -Url "http://127.0.0.1:8080/api/v1/diet-logs?page=0&size=1&userId=1" -TimeoutSec 2 }
+        $null = Start-ManagedPowerShell -Name "business" -WorkingDir $repoRoot -Command $businessCmd -HealthCheckScript { Wait-Http -Url "http://127.0.0.1:$businessPort/api/v1/diet-logs?page=0&size=1&userId=1" -TimeoutSec 2 }
     }
 } else {
-    $listener = Get-PortListenerPid -Port 8080
+    $listener = Get-PortListenerPid -Port $businessPort
     if ($listener) {
-        throw "Port 8080 is occupied by PID=$listener but business endpoint is unhealthy"
+        throw "Port $businessPort is occupied by PID=$listener but business endpoint is unhealthy"
     }
-    $null = Start-ManagedPowerShell -Name "business" -WorkingDir $repoRoot -Command $businessCmd -HealthCheckScript { Wait-Http -Url "http://127.0.0.1:8080/api/v1/diet-logs?page=0&size=1&userId=1" -TimeoutSec 2 }
+    $null = Start-ManagedPowerShell -Name "business" -WorkingDir $repoRoot -Command $businessCmd -HealthCheckScript { Wait-Http -Url "http://127.0.0.1:$businessPort/api/v1/diet-logs?page=0&size=1&userId=1" -TimeoutSec 2 }
 }
 
 $agentCmd = @"
 Set-Location '$repoRoot/nutri-agent'
-`$env:NUTRI_MCP_SERVER_URL = 'http://127.0.0.1:8001'
-`$env:NUTRI_BUSINESS_BASE_URL = 'http://127.0.0.1:8080/api/v1'
+`$env:NUTRI_MCP_SERVER_URL = 'http://127.0.0.1:$inferencePort'
+`$env:NUTRI_MCP_CHECKPOINT = '$checkpoint'
+`$env:NUTRI_MCP_INPUT_SIZE = '512'
+`$env:NUTRI_BUSINESS_BASE_URL = 'http://127.0.0.1:$businessPort/api/v1'
 while (`$true) {
-    & '$pythonExe' main.py
+    & '$pythonExe' '$agentMain'
     `$exitCode = `$LASTEXITCODE
     Write-Output "[agent-supervisor] agent exited with code=`$exitCode, restarting ..."
     Start-Sleep -Seconds 2
@@ -307,12 +333,12 @@ if (Test-QueueConsumerHealthy) {
 
 Write-Output "[wait] checking service health"
 
-if (-not (Wait-Http -Url "http://127.0.0.1:8001/health" -TimeoutSec 80)) {
-    throw "Inference health check failed: http://127.0.0.1:8001/health"
+if (-not (Wait-Http -Url "http://127.0.0.1:$inferencePort/health" -TimeoutSec 80)) {
+    throw "Inference health check failed: http://127.0.0.1:$inferencePort/health"
 }
 
-if (-not (Wait-Http -Url "http://127.0.0.1:8080/api/v1/diet-logs?page=0&size=1&userId=1" -TimeoutSec 120)) {
-    throw "Business health check failed: http://127.0.0.1:8080/api/v1/diet-logs"
+if (-not (Wait-Http -Url "http://127.0.0.1:$businessPort/api/v1/diet-logs?page=0&size=1&userId=1" -TimeoutSec 120)) {
+    throw "Business health check failed: http://127.0.0.1:$businessPort/api/v1/diet-logs"
 }
 
 if (-not (Wait-QueueConsumer -TimeoutSec 60)) {
@@ -331,8 +357,8 @@ if (-not (Wait-QueueConsumer -TimeoutSec 60)) {
 
 Write-Output ""
 Write-Output "Nutri-flow dev stack is ready"
-Write-Output "- Inference : http://127.0.0.1:8001/health"
-Write-Output "- Business  : http://127.0.0.1:8080/api/v1/diet-logs?page=0&size=1&userId=1"
+Write-Output "- Inference : http://127.0.0.1:$inferencePort/health"
+Write-Output "- Business  : http://127.0.0.1:$businessPort/api/v1/diet-logs?page=0&size=1&userId=1"
 Write-Output "- RabbitMQ  : http://127.0.0.1:15672  (nutri_mq / nutri_mq_pass)"
 Write-Output "- Logs dir  : $logDir"
 Write-Output ""

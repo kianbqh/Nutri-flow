@@ -10,6 +10,7 @@ mounted at /mcp in main.py.
 
 from __future__ import annotations
 
+import base64
 import io
 import json
 import logging
@@ -41,11 +42,15 @@ SEGMENT_FOOD_TOOL = Tool(
     ),
     inputSchema={
         "type": "object",
-        "required": ["image_url", "task_id"],
+        "required": ["task_id"],
         "properties": {
             "image_url": {
                 "type": "string",
                 "description": "Pre-signed OSS/MinIO URL of the meal image.",
+            },
+            "image_base64": {
+                "type": "string",
+                "description": "Optional base64-encoded meal image. Preferred for local async tasks.",
             },
             "task_id": {
                 "type": "string",
@@ -57,6 +62,10 @@ SEGMENT_FOOD_TOOL = Tool(
                 "description": "Minimum confidence score (0–1) for returned detections.",
             },
         },
+        "anyOf": [
+            {"required": ["image_url"]},
+            {"required": ["image_base64"]},
+        ],
     },
 )
 
@@ -71,27 +80,39 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     if name != "segment_food_image":
         raise ValueError(f"Unknown tool: {name}")
 
-    image_url: str = arguments["image_url"]
+    image_url: str = str(arguments.get("image_url") or "")
+    image_base64: str = str(arguments.get("image_base64") or "")
     task_id: str = arguments["task_id"]
     confidence_threshold: float = float(arguments.get("confidence_threshold", 0.5))
 
     logger.info("MCP tool call: segment_food_image task_id=%s", task_id)
 
-    # Download image from pre-signed URL
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(image_url)
-        resp.raise_for_status()
+    if image_base64:
+        image_bytes = base64.b64decode(image_base64)
+    elif image_url:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(image_url)
+            resp.raise_for_status()
+            image_bytes = resp.content
+    else:
+        raise ValueError("Either image_url or image_base64 is required")
 
-    pil_img = Image.open(io.BytesIO(resp.content)).convert("RGB")
+    pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     image_array = np.array(pil_img)
 
-    detections, inference_ms = run_inference(image_array, confidence_threshold)
+    detections, inference_ms, preview_b64, model_version = run_inference(image_array, confidence_threshold)
+    total_calories = sum(
+        float((item.get("nutrition") or {}).get("calories_kcal") or 0.0)
+        for item in detections
+    )
 
     result = {
         "task_id": task_id,
         "detected_items": detections,
-        "inference_time_ms": round(inference_ms, 2),
-        "model_version": "swin-t-bifpn-ca-v1",
+        "inference_time_ms": float(round(inference_ms, 2)),
+        "total_calories_kcal": round(total_calories, 1),
+        "segmentation_preview_png_base64": preview_b64,
+        "model_version": model_version,
     }
 
     return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]

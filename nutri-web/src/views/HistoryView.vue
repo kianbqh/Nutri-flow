@@ -55,7 +55,12 @@
     </section>
 
     <section v-else class="history-grid">
-      <article v-for="item in records" :key="item.taskId" class="surface-card history-card">
+      <article
+        v-for="item in records"
+        :key="item.taskId"
+        class="surface-card history-card"
+        @click="openRecord(item)"
+      >
         <div class="history-card__top">
           <div>
             <p class="history-card__meal">{{ mealLabel(item.mealType) }}</p>
@@ -76,6 +81,11 @@
         </div>
 
         <p class="history-preview">{{ previewAdvice(item.adviceReport) }}</p>
+
+        <div class="history-card__footer">
+          <span>点击查看详情</span>
+          <span class="history-card__arrow">›</span>
+        </div>
       </article>
     </section>
 
@@ -89,9 +99,10 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { getDietLogHistory, getStoredWebSession } from '@/api/dietLog'
 
+const router = useRouter()
 const session = getStoredWebSession()
 const userId = ref(session.userId)
 const phone = ref(session.phone)
@@ -104,7 +115,7 @@ const size = ref(10)
 const hasNext = ref(false)
 
 const isAuthenticated = computed(() => Boolean(userId.value && phone.value))
-const accountLabel = computed(() => phone.value || (userId.value ? `账号 #${userId.value}` : '未验证账号'))
+const accountLabel = computed(() => phone.value || '未验证账号')
 
 onMounted(() => {
   if (isAuthenticated.value) {
@@ -180,6 +191,14 @@ function previewAdvice(value) {
   if (normalized.length <= 120) return normalized
   return `${normalized.slice(0, 120)}...`
 }
+
+function openRecord(item) {
+  if (!item?.taskId) return
+  router.push({
+    name: 'task-result',
+    params: { taskId: item.taskId },
+  })
+}
 </script>
 
 <style scoped>
@@ -202,6 +221,14 @@ function previewAdvice(value) {
 .history-card {
   display: grid;
   gap: 16px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.history-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(155, 91, 46, 0.34);
+  box-shadow: 0 16px 32px rgba(86, 53, 26, 0.08);
 }
 
 .history-card__top {
@@ -248,6 +275,19 @@ function previewAdvice(value) {
 .history-preview {
   color: var(--muted);
   line-height: 1.75;
+}
+
+.history-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.history-card__arrow {
+  font-size: 1.4rem;
+  line-height: 1;
 }
 
 .pager-card {

@@ -36,25 +36,25 @@
     <section class="feature-grid">
       <article class="surface-card feature-card">
         <div class="feature-kicker">01</div>
-        <h3>上传区更聚焦</h3>
-        <p>把拖拽、预览、餐次和分析按钮聚到一块，减少页面切换感，适合桌面连续操作。</p>
+        <h3>上传更顺手</h3>
+        <p>选图、预览和开始分析集中在同一区域，上手更直接。</p>
       </article>
       <article class="surface-card feature-card">
         <div class="feature-kicker">02</div>
-        <h3>结果区更清晰</h3>
-        <p>总热量、识别项、分割图和建议分层展示，不再把所有信息堆在一个白板里。</p>
+        <h3>结果更好读</h3>
+        <p>热量、识别明细、图像区域和建议分开呈现，阅读更轻松。</p>
       </article>
       <article class="surface-card feature-card">
         <div class="feature-kicker">03</div>
-        <h3>历史与目标一体化</h3>
-        <p>从记录回看再到目标调整，视觉风格保持统一，避免不同页面像不同产品。</p>
+        <h3>记录更连贯</h3>
+        <p>从历史回看到目标调整可以顺着完成，方便长期记录和比较。</p>
       </article>
     </section>
 
     <section class="home-lower">
       <article class="surface-card">
         <header class="section-head">
-          <h3 class="section-title">标准流程</h3>
+          <h3 class="section-title">如何开始</h3>
           <p class="section-subtitle">从上传到回看，四步完成一轮完整的个人饮食记录。</p>
         </header>
         <ol class="process-list">
@@ -64,27 +64,27 @@
           </li>
           <li>
             <strong>等待分析</strong>
-            <span>轮询任务状态，并在结果到达后直接留在当前页继续阅读。</span>
+            <span>提交后稍等片刻，结果准备好后会直接显示在当前页面。</span>
           </li>
           <li>
-            <strong>查看结构化结果</strong>
-            <span>用总热量、识别表格和分割区域把这顿饭的结构先讲清楚。</span>
+            <strong>查看本餐结果</strong>
+            <span>先看总热量、识别明细和图像区域，快速了解这一餐。</span>
           </li>
           <li>
-            <strong>结合目标做判断</strong>
-            <span>再往下看 AI 建议和历史记录，让“是什么”过渡到“接下来怎么吃”。</span>
+            <strong>结合目标做调整</strong>
+            <span>再看建议和历史记录，判断下一餐怎么吃更合适。</span>
           </li>
         </ol>
       </article>
 
       <article class="surface-card editorial-card">
         <header class="section-head">
-          <h3 class="section-title">为什么建议先设置目标，再完善主页</h3>
-          <p class="section-subtitle">目标设置和个人主页已经拆成两个页面，各自更专注，后续每一次记录也会更容易长期追踪。</p>
+          <h3 class="section-title">为什么建议先设置目标，再完善资料</h3>
+          <p class="section-subtitle">目标和个人资料补充完整后，后续每一次记录都会更容易长期追踪。</p>
         </header>
         <div class="editorial-copy">
-          <p>完成手机号验证后，新的上传记录和历史数据都会归到你的个人账号下，不会再混到默认演示账号里。</p>
-          <p>个人主页现在专门处理账号和昵称，称呼可以单独修改，不会和目标设置混在一起。</p>
+          <p>完成手机号验证后，新的上传记录和历史数据都会保存到你的个人账号下，方便后续持续回看。</p>
+          <p>补充昵称和基础资料后，多次回看记录时会更容易识别自己当前的阶段变化。</p>
           <p>目标设置页会长期影响建议内容，让系统更清楚你是想减脂、维持，还是更关注整体均衡。</p>
         </div>
       </article>

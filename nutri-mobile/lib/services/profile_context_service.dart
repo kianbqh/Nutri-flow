@@ -69,4 +69,9 @@ class ProfileContextService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_storageKey, jsonEncode(snapshot.toJson()));
   }
+
+  Future<void> clearSnapshot() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_storageKey);
+  }
 }
