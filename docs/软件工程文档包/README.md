@@ -1,35 +1,38 @@
-# Nutri-flow 软件工程文档包
+# Software Engineering Document Pack
 
-本目录用于集中管理毕业设计的软件工程过程文档，覆盖从需求分析到系统设计与实现约束。
+This directory contains the stable engineering documents for Nutri-flow. It is
+the best entry point for reviewers who want to understand the product scope,
+architecture, data model, API contracts, test plan, agent workflow, and model
+release baseline.
 
-开发过程中的优化记录、问题定位记录和代码修改记录已迁移到同级目录 [../开发与优化记录/README.md](../开发与优化记录/README.md)，以便与稳定的软件工程文档分开维护。
+## Documents
 
-## 文档清单
+1. `01_需求规格说明书.md` - product goals and functional scope
+2. `02_用户故事与验收标准.md` - user stories and acceptance criteria
+3. `03_系统架构设计文档.md` - service architecture and integration design
+4. `04_数据库设计文档.md` - data model and table design
+5. `05_接口文档.md` - API behavior and request/response examples
+6. `06_技术选型报告.md` - technology choices and trade-offs
+7. `07_开发任务分解与实现路线.md` - implementation plan
+8. `08_状态机与错误码规范.md` - task states and error handling
+9. `09_测试计划与用例矩阵.md` - test strategy and cases
+10. `10_UI交互与视觉规范.md` - UI flow and visual rules
+11. `11_OpenAPI接口契约.yaml` - OpenAPI contract
+12. `12_信息架构与页面流程.md` - page and navigation structure
+13. `13_模型现状评估与能力边界.md` - model capability boundaries
+14. `14_Agent工作流设计.md` - LangGraph agent workflow
+15. `15_本地启动说明与注意事项.md` - local startup guide
+16. `16_实验设计与结果归档总报告.md` - experiment summary
+17. `17_端到端性能与稳定性验证报告.md` - E2E validation report
+18. `18_模型版本基线与默认发布说明.md` - released model baseline
+19. `19_毕业论文写作素材提炼.md` - thesis writing material
 
-1. [01_需求规格说明书.md](01_需求规格说明书.md)
-2. [02_用户故事与验收标准.md](02_用户故事与验收标准.md)
-3. [03_系统架构设计文档.md](03_系统架构设计文档.md)
-4. [04_数据库设计文档.md](04_数据库设计文档.md)
-5. [05_接口文档.md](05_接口文档.md)
-6. [06_技术选型报告.md](06_技术选型报告.md)
-7. [07_开发任务分解与实现路线.md](07_开发任务分解与实现路线.md)
-8. [08_状态机与错误码规范.md](08_状态机与错误码规范.md)
-9. [09_测试计划与用例矩阵.md](09_测试计划与用例矩阵.md)
-10. [10_UI交互与视觉规范.md](10_UI交互与视觉规范.md)
-11. [11_OpenAPI接口契约.yaml](11_OpenAPI接口契约.yaml)
-12. [12_信息架构与页面流程.md](12_信息架构与页面流程.md)
-13. [13_模型现状评估与能力边界.md](13_模型现状评估与能力边界.md)
-14. [14_Agent工作流设计.md](14_Agent工作流设计.md)
-15. [15_本地启动说明与注意事项.md](15_本地启动说明与注意事项.md)
+## Reading Path
 
-## 使用建议
+For a quick project review, read documents 03, 05, 14, 16, and 18 first.
+For implementation details, continue with 04, 08, 09, 10, and 15.
 
-1. 先阅读需求、用户故事、模型边界，统一功能与能力预期。
-2. 再阅读架构、数据库、状态机，冻结实现约束。
-3. 然后阅读接口文档与 OpenAPI 契约，推进联调前准备。
-4. 最后按任务分解与测试矩阵执行开发和验证。
+## Boundary
 
-## 边界声明
-
-- 本系统仅用于饮食热量估算与营养提示，不提供医疗诊断。
-- 所有热量与营养值均为估算值，需在产品中明确提示。
+Nutri-flow estimates dietary intake for feedback and education. It does not
+provide medical diagnosis or clinical nutrition measurement.

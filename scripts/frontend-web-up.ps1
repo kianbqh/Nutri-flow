@@ -20,6 +20,26 @@ foreach ($pathValue in $pathsToCreate) {
     }
 }
 
+function Repair-ProcessPathEnvironment {
+    $envVars = [Environment]::GetEnvironmentVariables("Process")
+    $pathKeys = @($envVars.Keys | Where-Object { [string]$_ -ieq "Path" })
+    if ($pathKeys.Count -le 1) {
+        return
+    }
+
+    $pathValue = [Environment]::GetEnvironmentVariable("Path", "Process")
+    if ([string]::IsNullOrWhiteSpace($pathValue)) {
+        $pathValue = [Environment]::GetEnvironmentVariable("PATH", "Process")
+    }
+
+    foreach ($key in $pathKeys) {
+        [Environment]::SetEnvironmentVariable([string]$key, $null, "Process")
+    }
+    [Environment]::SetEnvironmentVariable("Path", $pathValue, "Process")
+}
+
+Repair-ProcessPathEnvironment
+
 if (-not (Test-Path $flutterBat)) {
     throw "Flutter SDK not found: $flutterBat"
 }
@@ -164,7 +184,7 @@ $command = @"
 Set-Location '$mobileDir'
 `$env:PATH = '$repoRoot/.tools/flutter_sdk_3.41.6/flutter/bin;' + `$env:PATH
 while (`$true) {
-    & '$flutterBat' run -d web-server --web-hostname 127.0.0.1 --web-port $Port
+    & '$flutterBat' run -d web-server --release --web-hostname 127.0.0.1 --web-port $Port
     `$exitCode = `$LASTEXITCODE
     Write-Output "[frontend-web-supervisor] flutter run exited with code=`$exitCode, restarting ..."
     Start-Sleep -Seconds 2

@@ -7,13 +7,10 @@
         <p class="page-hero__subtitle">
           上传一张清晰餐图后，系统会返回识别结果、热量估算和饮食建议，帮助你更快判断这顿饭是否符合自己的目标。
         </p>
-        <div class="page-actions">
-          <button class="button button--primary" :disabled="!isAuthenticated || !selectedFile || foodStore.isLoading" @click="analyse">
-            {{ foodStore.isLoading ? '分析中…' : '开始分析' }}
-          </button>
-          <button class="button button--secondary" type="button" @click="triggerFileSelect">
-            选择图片
-          </button>
+        <div class="upload-flow-pills">
+          <span class="upload-flow-pill">1 选择图片</span>
+          <span class="upload-flow-pill">2 确认餐次</span>
+          <span class="upload-flow-pill">3 开始分析</span>
         </div>
       </div>
 
@@ -24,33 +21,28 @@
           <p>{{ isAuthenticated ? '新的分析记录会保存到当前账号下。' : '先完成手机号验证，再把分析结果和历史记录保存到你的账号。' }}</p>
         </div>
         <div class="metric-card">
-          <span>当前状态</span>
-          <strong>{{ statusLabel }}</strong>
-          <p>{{ statusHint }}</p>
+          <span>拍摄建议</span>
+          <strong>尽量拍完整餐盘，减少遮挡和强反光</strong>
+          <p>图片越清晰、食物越完整，识别结果通常越稳定。</p>
         </div>
         <div class="metric-card">
-          <span>当前图片</span>
-          <strong>{{ selectedFileName }}</strong>
-          <p>上传前可以继续替换图片，避免把模糊或裁切过头的餐图送去分析。</p>
-        </div>
-        <div class="metric-card">
-          <span>分析节奏</span>
-          <strong>通常 5 到 15 秒</strong>
-          <p>系统会自动轮询任务状态，结果到达后会直接展示分割图、识别表和建议。</p>
+          <span>分析结果</span>
+          <strong>会返回热量估算、识别明细和饮食建议</strong>
+          <p>分析完成后，你可以直接查看这一餐的主要结果。</p>
         </div>
       </aside>
     </section>
 
     <section v-if="!isAuthenticated" class="surface-card empty-state auth-empty-state">
       <h3>先验证手机号账号</h3>
-        <p>完成验证后，新的分析结果、历史记录和个人主页资料都会跟随当前账号保存，不再落到默认演示账号。</p>
+        <p>完成验证后，新的分析结果、历史记录和个人主页资料都会跟随当前账号一起保存。</p>
         <RouterLink to="/profile" class="button button--primary">去个人主页验证</RouterLink>
     </section>
 
-    <section v-else class="upload-layout">
-      <section class="surface-card upload-stage">
+    <section v-else class="surface-card upload-workbench">
+      <div class="upload-workbench__media">
         <header class="section-head">
-          <h3 class="section-title">餐图预览</h3>
+          <h3 class="section-title">选择并预览餐图</h3>
           <p class="section-subtitle">支持点击和拖拽上传。尽量保留完整餐盘，减少遮挡和强反光。</p>
         </header>
 
@@ -83,25 +75,12 @@
             @change="onFileChange"
           />
         </div>
+      </div>
 
-        <div class="upload-meta">
-          <div>
-            <span class="upload-meta__label">已选文件</span>
-            <strong>{{ selectedFileName }}</strong>
-          </div>
-          <div>
-            <span class="upload-meta__label">建议</span>
-            <p>尽量包含餐盘主体和主要配菜，方便模型判断食物区域和份量。</p>
-          </div>
-        </div>
-
-        <p v-if="foodStore.error" class="soft-note soft-note--error">{{ foodStore.error }}</p>
-      </section>
-
-      <aside class="surface-card control-stage">
+      <aside class="upload-workbench__controls">
         <header class="section-head">
-          <h3 class="section-title">提交分析</h3>
-          <p class="section-subtitle">先确认餐次，再开始这轮营养估算与建议生成。</p>
+          <h3 class="section-title">确认餐次并开始分析</h3>
+          <p class="section-subtitle">选择好这顿饭属于哪一餐后，就可以开始分析。</p>
         </header>
 
         <div class="field-stack">
@@ -114,10 +93,37 @@
           </select>
         </div>
 
+        <div class="control-actions">
+          <button class="button button--secondary" type="button" @click="triggerFileSelect">
+            {{ foodStore.previewUrl ? '重新选择图片' : '选择图片' }}
+          </button>
+          <button class="button button--primary" :disabled="!selectedFile || foodStore.isLoading" @click="analyse">
+            {{ foodStore.isLoading ? '分析中…' : '开始分析' }}
+          </button>
+        </div>
+
+        <div class="upload-quick-summary">
+          <article class="upload-quick-card">
+            <span>当前图片</span>
+            <strong>{{ selectedFileName }}</strong>
+            <p>上传前可以继续替换图片，避免把模糊或裁切过头的餐图送去分析。</p>
+          </article>
+          <article class="upload-quick-card">
+            <span>当前状态</span>
+            <strong>{{ statusLabel }}</strong>
+            <p>{{ statusHint }}</p>
+          </article>
+          <article class="upload-quick-card">
+            <span>当前账号</span>
+            <strong>{{ accountLabel }}</strong>
+            <p>新的分析记录会保存到当前账号下，方便后续在历史页回看。</p>
+          </article>
+        </div>
+
         <div class="control-wash">
-          <span>当前模式</span>
-          <strong>上传一张图片，等待这一餐的完整分析结果</strong>
-          <p>你可以在同一页连续查看识别结果、热量估算和饮食建议，不需要反复切换页面。</p>
+          <span>开始前确认</span>
+          <strong>图片清晰、餐次正确，结果会更稳定</strong>
+          <p>如果这次识别不理想，可以换一张更清晰的图片再试一次。</p>
         </div>
 
         <ul class="control-list">
@@ -126,101 +132,30 @@
           <li>设置页中的目标会影响后续建议内容。</li>
         </ul>
 
+        <p v-if="foodStore.error" class="soft-note soft-note--error">{{ foodStore.error }}</p>
+
         <p v-if="foodStore.status === 'PENDING'" class="soft-note control-note">
           AI 正在分析，通常需要 5 到 15 秒。你可以留在当前页直接等待结果返回。
         </p>
       </aside>
     </section>
 
-    <section v-if="foodStore.status === 'COMPLETED'" class="results-stack">
-      <div class="metric-grid">
-        <div class="metric-card">
-          <span>总热量</span>
-          <strong>{{ foodStore.totalCalories.toFixed(1) }} kcal</strong>
-          <p>这是当前检测到食物项的热量合计，可结合目标页的日摄入设置一起判断。</p>
-        </div>
-        <div class="metric-card">
-          <span>识别项</span>
-          <strong>{{ foodStore.detectedItems.length }} 项</strong>
-          <p>系统会按识别结果列出主要食物、置信度、重量和单项热量估算。</p>
-        </div>
-        <div class="metric-card">
-          <span>建议状态</span>
-          <strong>{{ adviceSections.main ? '已生成' : '生成中' }}</strong>
-          <p>{{ adviceSections.basis ? '本次建议包含个性化参考依据。' : '建议文本返回后会自动展示在下方。' }}</p>
-        </div>
-      </div>
-
-      <section class="surface-card mask-stage">
-        <header class="section-head">
-          <h3 class="section-title">分割预览</h3>
-          <p class="section-subtitle">先看区域划分和类别图例，再往下对照每项热量与建议。</p>
-        </header>
-        <MaskCanvas
-          :image-url="foodStore.previewUrl"
-          :masks="foodStore.masks"
-          :width="720"
-          :height="460"
-        />
-      </section>
-
-      <section class="surface-card">
-        <header class="section-head">
-          <h3 class="section-title">识别明细</h3>
-          <p class="section-subtitle">把每个识别项的置信度、预估重量和热量拆开看，便于回查判断。</p>
-        </header>
-        <div class="table-wrap">
-          <table class="result-table">
-            <thead>
-              <tr>
-                <th>食物</th>
-                <th>置信度</th>
-                <th>预估重量</th>
-                <th>热量</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(item, i) in foodStore.detectedItems" :key="i">
-                <td>{{ item.label }}</td>
-                <td>{{ (item.confidence * 100).toFixed(1) }}%</td>
-                <td>{{ item.estimated_weight_g ? item.estimated_weight_g + 'g' : '—' }}</td>
-                <td>{{ item.nutrition?.calories_kcal ?? '—' }} kcal</td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colspan="3">合计热量</td>
-                <td>{{ foodStore.totalCalories.toFixed(1) }} kcal</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </section>
-
-      <section class="surface-card advice-stage">
-        <header class="section-head">
-          <h3 class="section-title">饮食建议</h3>
-          <p class="section-subtitle">先给可执行建议，再把这次建议主要参考的依据单独放出来。</p>
-        </header>
-
-        <div v-if="adviceSections.basis" class="advice-basis">
-          <h4>这次建议主要参考</h4>
-          <p>{{ adviceSections.basis }}</p>
-        </div>
-
-        <div class="advice-main">
-          <h4>本次建议正文</h4>
-          <p>{{ adviceSections.main || '建议生成中，请稍候…' }}</p>
-        </div>
-      </section>
-    </section>
+    <AnalysisResultPanel
+      v-if="foodStore.status === 'COMPLETED'"
+      :status="foodStore.status"
+      :image-url="foodStore.previewUrl"
+      :segmentation-preview-url="foodStore.segmentationPreviewUrl"
+      :detected-items="foodStore.detectedItems"
+      :total-calories="foodStore.totalCalories"
+      :advice-report="foodStore.adviceReport || ''"
+    />
   </div>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import MaskCanvas from '@/components/MaskCanvas.vue'
+import AnalysisResultPanel from '@/components/AnalysisResultPanel.vue'
 import { useFoodStore } from '@/stores/food'
 import { getStoredWebSession } from '@/api/dietLog'
 
@@ -230,9 +165,10 @@ const selectedFile = ref(null)
 const mealType = ref('LUNCH')
 const isDragOver = ref(false)
 const session = getStoredWebSession()
+const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png']
 
 const isAuthenticated = computed(() => Boolean(session.userId && session.phone))
-const accountLabel = computed(() => session.phone || (session.userId ? `账号 #${session.userId}` : '未验证账号'))
+const accountLabel = computed(() => session.phone || '未验证账号')
 
 const selectedFileName = computed(() => selectedFile.value?.name || '未选择图片')
 
@@ -250,15 +186,13 @@ const statusLabel = computed(() => {
 const statusHint = computed(() => {
   const hints = {
     IDLE: '先放入一张餐图，再选择餐次开始分析。',
-    UPLOADING: '图片正在发送到后端，上传完成后会自动进入轮询。',
-    PENDING: '任务已经提交，系统正在识别食物区域并生成建议。',
+    UPLOADING: '图片正在上传，请稍候。',
+    PENDING: '正在识别食物并生成这次分析结果。',
     COMPLETED: '结果已经返回，可以直接查看分割区域、表格和饮食建议。',
     FAILED: '这轮分析未完成，可以更换图片或稍后重试。',
   }
   return hints[foodStore.status] || '先放入一张餐图，再选择餐次开始分析。'
 })
-
-const adviceSections = computed(() => splitAdvice(foodStore.adviceReport))
 
 function triggerFileSelect() {
   fileInput.value?.click()
@@ -276,10 +210,33 @@ function onDrop(event) {
 }
 
 function setFile(file) {
-  if (!file.type.startsWith('image/')) return
+  if (!isSupportedImage(file)) {
+    selectedFile.value = null
+    foodStore.reset()
+    foodStore.error = '仅支持 JPG 或 PNG 图片，请重新选择餐食图片'
+    clearFileInput()
+    return
+  }
+
   selectedFile.value = file
   foodStore.reset()
   foodStore.previewUrl = URL.createObjectURL(file)
+  clearFileInput()
+}
+
+function isSupportedImage(file) {
+  if (ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+    return true
+  }
+
+  const fileName = file.name?.toLowerCase() || ''
+  return fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') || fileName.endsWith('.png')
+}
+
+function clearFileInput() {
+  if (fileInput.value) {
+    fileInput.value.value = ''
+  }
 }
 
 async function analyse() {
@@ -291,35 +248,31 @@ async function analyse() {
   await foodStore.uploadAndAnalyse(selectedFile.value, mealType.value)
 }
 
-function splitAdvice(report) {
-  if (!report || !report.trim()) {
-    return { basis: '', main: '' }
-  }
-
-  const normalized = report.replace(/\r\n/g, '\n').trim()
-  const sections = normalized.split(/\n{2,}/).map((section) => section.trim()).filter(Boolean)
-
-  if (sections.length > 0 && sections[0].startsWith('个性化参考依据')) {
-    const basis = sections[0].replace(/^个性化参考依据[:：]?\s*/, '').trim()
-    const main = sections.slice(1).join('\n\n').trim()
-    return {
-      basis,
-      main: main || '系统已结合本次识别结果和你的目标生成建议。',
-    }
-  }
-
-  return {
-    basis: '',
-    main: normalized,
-  }
-}
-
 onBeforeUnmount(() => foodStore.stopPolling())
 </script>
 
 <style scoped>
-.hero-aside,
-.results-stack {
+.upload-flow-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.upload-flow-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255, 248, 241, 0.96);
+  border: 1px solid rgba(238, 224, 213, 0.95);
+  color: var(--accent-strong);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.hero-aside {
   display: grid;
   gap: 14px;
 }
@@ -330,9 +283,16 @@ onBeforeUnmount(() => foodStore.stopPolling())
   justify-items: start;
 }
 
-.upload-layout {
+.upload-workbench {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.upload-workbench__media,
+.upload-workbench__controls {
+  display: grid;
   gap: 18px;
 }
 
@@ -395,35 +355,35 @@ onBeforeUnmount(() => foodStore.stopPolling())
 .preview-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  background: #111217;
 }
 
-.upload-meta {
-  margin-top: 16px;
+.upload-quick-summary {
   display: grid;
-  grid-template-columns: minmax(0, 0.55fr) minmax(0, 1fr);
   gap: 14px;
 }
 
-.upload-meta > div {
+.upload-quick-card {
   padding: 16px 18px;
   border-radius: 20px;
   background: rgba(255, 248, 242, 0.94);
   border: 1px solid rgba(238, 224, 213, 0.95);
 }
 
-.upload-meta__label {
+.upload-quick-card span {
   display: block;
   color: var(--muted-soft);
   font-size: 0.84rem;
   margin-bottom: 8px;
 }
 
-.upload-meta strong {
+.upload-quick-card strong {
   font-size: 1rem;
 }
 
-.upload-meta p {
+.upload-quick-card p {
+  margin-top: 8px;
   color: var(--muted);
   line-height: 1.6;
 }
@@ -437,10 +397,14 @@ onBeforeUnmount(() => foodStore.stopPolling())
   font-weight: 700;
 }
 
-.control-stage {
-  display: grid;
-  align-content: start;
-  gap: 18px;
+.control-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.control-actions .button {
+  flex: 1 1 180px;
 }
 
 .control-wash {
@@ -481,82 +445,8 @@ onBeforeUnmount(() => foodStore.stopPolling())
   color: var(--warning);
 }
 
-.mask-stage :deep(.mask-canvas-wrapper) {
-  width: 100%;
-}
-
-.mask-stage :deep(.mask-canvas) {
-  width: 100%;
-  height: auto;
-}
-
-.table-wrap {
-  overflow-x: auto;
-}
-
-.result-table {
-  width: 100%;
-  min-width: 520px;
-  border-collapse: collapse;
-}
-
-.result-table th,
-.result-table td {
-  padding: 14px 16px;
-  text-align: left;
-  border-bottom: 1px solid rgba(238, 224, 213, 0.95);
-}
-
-.result-table th {
-  color: var(--muted-soft);
-  font-size: 0.84rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.result-table tfoot td {
-  font-weight: 800;
-  color: var(--accent-strong);
-  border-bottom: none;
-}
-
-.advice-stage {
-  display: grid;
-  gap: 16px;
-}
-
-.advice-basis {
-  padding: 18px;
-  border-radius: 22px;
-  background: rgba(255, 245, 236, 0.92);
-  border: 1px solid rgba(242, 200, 168, 0.74);
-}
-
-.advice-main {
-  padding: 22px;
-  border-radius: 24px;
-  background: linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(255, 248, 242, 0.98));
-  border: 1px solid rgba(234, 215, 202, 0.96);
-}
-
-.advice-basis h4,
-.advice-main h4 {
-  margin-bottom: 10px;
-  font-size: 1rem;
-  font-weight: 800;
-}
-
-.advice-basis p,
-.advice-main p {
-  white-space: pre-wrap;
-  color: var(--muted);
-  line-height: 1.8;
-}
-
 @media (max-width: 1024px) {
-  .upload-layout,
-  .upload-meta {
+  .upload-workbench {
     grid-template-columns: 1fr;
   }
 }

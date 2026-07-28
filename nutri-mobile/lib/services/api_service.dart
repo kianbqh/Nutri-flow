@@ -22,17 +22,17 @@ class ApiService {
       return Uri(
         scheme: Uri.base.scheme,
         host: Uri.base.host,
-        port: 8080,
+        port: 18080,
         path: '/api/v1',
       ).toString();
     }
 
     // Android emulator cannot reach host loopback directly; use 10.0.2.2.
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:8080/api/v1';
+      return 'http://10.0.2.2:18080/api/v1';
     }
 
-    return 'http://127.0.0.1:8080/api/v1';
+    return 'http://127.0.0.1:18080/api/v1';
   }
 
   final Dio _dio = Dio(BaseOptions(
@@ -62,7 +62,13 @@ class ApiService {
       if (error.type == DioExceptionType.connectionError ||
           error.type == DioExceptionType.connectionTimeout ||
           error.type == DioExceptionType.receiveTimeout) {
-        return '$prefix：无法连接到服务。请确认后端已启动并可访问：$baseUrl';
+        if (action == '提交分析') {
+          return '提交分析失败：当前网络不可用或服务暂时无法访问，请检查网络后重新提交。';
+        }
+        if (action == '状态查询') {
+          return '状态查询失败：当前网络不可用或服务暂时无法访问，请检查网络后重试。';
+        }
+        return '$prefix：当前网络不可用或服务暂时无法访问，请检查网络后重试。';
       }
 
       if (error.type == DioExceptionType.badResponse) {
@@ -71,7 +77,7 @@ class ApiService {
           return '$prefix：当前请求无权限（$code）。';
         }
         if (code == 404) {
-          return '$prefix：接口不存在（404），请检查前后端地址配置。';
+          return '$prefix：当前功能暂时不可用，请稍后再试。';
         }
         if (code != null && code >= 500) {
           return '$prefix：服务端异常（$code），请稍后重试。';

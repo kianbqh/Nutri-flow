@@ -23,7 +23,7 @@
         <div class="metric-card">
           <span>当前账号</span>
           <strong>{{ accountLabel }}</strong>
-          <p>{{ hasSession ? '当前网页端已经绑定手机号账号。' : '还没有完成手机号验证。' }}</p>
+          <p>{{ hasSession ? '当前手机号账号已完成验证。' : '还没有完成手机号验证。' }}</p>
         </div>
         <div class="metric-card">
           <span>当前昵称</span>
@@ -54,41 +54,44 @@
             <article class="account-tile">
               <span class="account-tile__label">账号状态</span>
               <strong>{{ hasSession ? '已验证手机号' : '未验证' }}</strong>
-              <p>{{ hasSession ? maskedPhoneText : '完成验证后，新的分析记录和历史数据才会归到你的个人账号。' }}</p>
-            </article>
-            <article class="account-tile">
-              <span class="account-tile__label">数据归属</span>
-              <strong>{{ hasSession ? '跟随当前账号保存' : '验证后开始归档' }}</strong>
-              <p>网页端现在只会把上传结果、历史记录和主页资料保存到当前已验证账号，不再回退到默认演示账号。</p>
+              <p>{{ hasSession ? maskedPhoneText : '完成验证后，你的分析记录、历史记录和个人设置都会长期保存。' }}</p>
             </article>
           </div>
 
-          <div class="field-grid account-auth-grid">
-            <div class="field-stack">
-              <label class="field-label" for="loginPhone">手机号</label>
-              <input id="loginPhone" v-model.trim="loginForm.phone" type="tel" placeholder="输入 11 位手机号" />
+          <template v-if="!hasSession">
+            <div class="field-grid account-auth-grid">
+              <div class="field-stack">
+                <label class="field-label" for="loginPhone">手机号</label>
+                <input id="loginPhone" v-model.trim="loginForm.phone" type="tel" placeholder="输入 11 位手机号" />
+              </div>
+
+              <div class="field-stack">
+                <label class="field-label" for="loginCode">验证码</label>
+                <input id="loginCode" v-model.trim="loginForm.code" type="text" placeholder="输入 6 位验证码" />
+              </div>
             </div>
 
-            <div class="field-stack">
-              <label class="field-label" for="loginCode">验证码</label>
-              <input id="loginCode" v-model.trim="loginForm.code" type="text" placeholder="输入 6 位验证码" />
+            <div class="page-actions profile-actions">
+              <button class="button button--secondary" :disabled="authBusy || !loginForm.phone" @click="requestCode">
+                {{ authBusy ? '发送中…' : '发送验证码' }}
+              </button>
+              <button
+                class="button button--primary"
+                :disabled="authBusy || !loginForm.phone || !loginForm.code"
+                @click="bindAccount"
+              >
+                {{ authBusy ? '验证中…' : '验证并进入个人账号' }}
+              </button>
             </div>
+
+            <p v-if="debugCode" class="soft-note">验证码：{{ debugCode }}</p>
+          </template>
+
+          <div v-else class="locked-panel">
+            <h4>当前账号已完成验证</h4>
+            <p>你可以直接维护昵称，或在需要时点击页面上方的“切换账号”重新登录其他手机号。</p>
           </div>
 
-          <div class="page-actions profile-actions">
-            <button class="button button--secondary" :disabled="authBusy || !loginForm.phone" @click="requestCode">
-              {{ authBusy ? '发送中…' : '发送验证码' }}
-            </button>
-            <button
-              class="button button--primary"
-              :disabled="authBusy || !loginForm.phone || !loginForm.code"
-              @click="bindAccount"
-            >
-              {{ authBusy ? '验证中…' : '验证并进入个人账号' }}
-            </button>
-          </div>
-
-          <p v-if="debugCode" class="soft-note">当前可用验证码：{{ debugCode }}</p>
           <p v-if="authError" class="soft-note soft-note--error">{{ authError }}</p>
           <p v-if="authMessage" class="soft-note profile-success">{{ authMessage }}</p>
         </section>
@@ -114,7 +117,7 @@
               <article class="account-tile">
                 <span class="account-tile__label">当前账号</span>
                 <strong>{{ accountLabel }}</strong>
-                <p>{{ currentUserId ? `用户 ID #${currentUserId}` : '未验证账号' }}</p>
+                <p>当前昵称、历史记录和目标设置都会和这个账号一起保存。</p>
               </article>
             </div>
 
@@ -145,7 +148,7 @@
                   <div class="readonly-panel">
                     <span>手机号账号</span>
                     <strong>{{ accountLabel }}</strong>
-                    <small>{{ currentUserId ? `用户 ID #${currentUserId}` : '未验证账号' }}</small>
+                    <small>保存后会立即同步到当前账号主页。</small>
                   </div>
                 </div>
               </div>
@@ -295,7 +298,7 @@ const heroTitle = computed(() =>
 const profileNote = computed(() =>
   hasSession.value
     ? '当前账号下的主页昵称、历史记录和目标设置都会持续同步保存。'
-    : '完成手机号验证后，个人主页、历史记录和目标设置才会归到你的账号下。'
+    : '完成手机号验证后，你的主页资料、历史记录和目标设置都会长期保存。'
 )
 
 const nicknameStatusText = computed(() =>
@@ -453,7 +456,7 @@ async function requestCode() {
     debugCode.value = data.debugCode || ''
     if (debugCode.value) {
       loginForm.code = debugCode.value
-      authMessage.value = '验证码已生成，可直接填写下方验证码完成验证。'
+      authMessage.value = '验证码已生成，填写后即可完成验证。'
     } else {
       authMessage.value = data.message || '验证码已发送。'
     }
@@ -496,7 +499,7 @@ function switchAccount() {
   error.value = ''
   success.value = ''
   authError.value = ''
-  authMessage.value = '已退出当前网页账号，请重新验证手机号。'
+  authMessage.value = '已退出当前账号，请重新验证手机号。'
   resetProfileForm()
   loadedOnce.value = true
 }

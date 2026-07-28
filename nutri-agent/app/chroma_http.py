@@ -61,7 +61,10 @@ def embed_text(text: str, dimension: int = 128) -> list[float]:
 
 
 async def _request(method: str, path: str, json_body: dict[str, Any] | None = None) -> Any:
-    async with httpx.AsyncClient(timeout=_settings.chroma_timeout_seconds) as client:
+    async with httpx.AsyncClient(
+        timeout=_settings.chroma_timeout_seconds,
+        trust_env=False,
+    ) as client:
         response = await client.request(method, f"{_base_url()}{path}", json=json_body)
         response.raise_for_status()
         return response.json() if response.content else None

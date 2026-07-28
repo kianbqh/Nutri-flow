@@ -55,6 +55,9 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
     'GENERAL_HEALTH': '综合健康',
   };
 
+  static const int _minDailyTarget = 1200;
+  static const int _maxDailyTarget = 3200;
+
   @override
   void initState() {
     super.initState();
@@ -121,7 +124,7 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
             : AuthService.instance.currentPhone;
         _nickname = profile.nickname;
         _healthGoal = profile.healthGoal;
-        _dailyTarget = profile.dailyCalorieTarget;
+        _dailyTarget = _normalizeDailyTarget(profile.dailyCalorieTarget);
         _restrictions
           ..clear()
           ..addAll(profile.dietaryRestrictions);
@@ -156,7 +159,7 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
       final UserProfile profile = await ApiService.instance.updateProfile(
         nickname: (_nickname ?? '').trim().isEmpty ? null : _nickname!.trim(),
         healthGoal: _healthGoal,
-        dailyCalorieTarget: _dailyTarget,
+        dailyCalorieTarget: _normalizeDailyTarget(_dailyTarget),
         restrictions: _restrictions.toList(),
         heightCm: int.tryParse(_heightController.text.trim()),
         weightKg: double.tryParse(_weightController.text.trim()),
@@ -208,6 +211,176 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
     });
   }
 
+  _ParsedProfileContext _parseContextFromText(String rawText) {
+    final String text = rawText.toLowerCase();
+    final int? age = _extractInt(text, [
+      RegExp(r'(\d{1,2})\s*(?:岁|周岁|year|years|y/o)'),
+      RegExp(r'(?:年龄|age)\s*[:：]?\s*(\d{1,2})'),
+    ], min: 8, max: 90);
+    final int? heightCm = _extractHeightCm(text);
+    final double? weightKg = _extractWeightKg(text);
+    final String? gender = _extractGender(text);
+    final String? activityLevel = _extractActivityLevel(text);
+
+    return _ParsedProfileContext(
+      age: age,
+      heightCm: heightCm,
+      weightKg: weightKg,
+      gender: gender,
+      activityLevel: activityLevel,
+    );
+  }
+
+  int? _extractInt(String text, List<RegExp> patterns, {required int min, required int max}) {
+    for (final RegExp pattern in patterns) {
+      final RegExpMatch? match = pattern.firstMatch(text);
+      final int? value = match == null ? null : int.tryParse(match.group(1) ?? '');
+      if (value != null && value >= min && value <= max) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  int? _extractHeightCm(String text) {
+    final int? cm = _extractInt(text, [
+      RegExp(r'(?:身高|height)\s*[:：]?\s*(\d{2,3})\s*(?:cm|厘米|公分)?'),
+      RegExp(r'(\d{2,3})\s*(?:cm|厘米|公分)'),
+    ], min: 90, max: 230);
+    if (cm != null) {
+      return cm;
+    }
+
+    final RegExpMatch? meterMatch = RegExp(r'(?:身高|height)?\s*(1\.\d{2})\s*(?:m|米)').firstMatch(text);
+    final double? meters = meterMatch == null ? null : double.tryParse(meterMatch.group(1) ?? '');
+    if (meters != null) {
+      final int converted = (meters * 100).round();
+      if (converted >= 90 && converted <= 230) {
+        return converted;
+      }
+    }
+    return null;
+  }
+
+  double? _extractWeightKg(String text) {
+    final List<RegExp> patterns = [
+      RegExp(r'(?:体重|weight)\s*[:：]?\s*(\d+(?:\.\d+)?)\s*(斤|kg|公斤|千克)?'),
+      RegExp(r'(\d+(?:\.\d+)?)\s*(斤|kg|公斤|千克)'),
+    ];
+    for (final RegExp pattern in patterns) {
+      final RegExpMatch? match = pattern.firstMatch(text);
+      final double? rawValue = match == null ? null : double.tryParse(match.group(1) ?? '');
+      final String unit = (match?.group(2) ?? '').toLowerCase();
+      if (rawValue == null) {
+        continue;
+      }
+
+      final bool shouldTreatAsJin = unit == '斤' ||
+          (unit.isEmpty && text.contains('体重') && rawValue >= 120);
+      final double value = shouldTreatAsJin ? rawValue / 2 : rawValue;
+      if (value >= 25 && value <= 250) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  int _normalizeDailyTarget(Object? value) {
+    final int parsed = switch (value) {
+      int item => item,
+      num item => item.round(),
+      String item => int.tryParse(item) ?? _dailyTarget,
+      _ => _dailyTarget,
+    };
+    return parsed.clamp(_minDailyTarget, _maxDailyTarget).toInt();
+  }
+
+  String? _extractGender(String text) {
+    if (RegExp(r'(?:男|男性|男生|male|man)').hasMatch(text)) {
+      return 'MALE';
+    }
+    if (RegExp(r'(?:女|女性|女生|female|woman)').hasMatch(text)) {
+      return 'FEMALE';
+    }
+    return null;
+  }
+
+  String? _extractActivityLevel(String text) {
+    if (RegExp(r'(?:久坐|很少运动|不怎么运动|活动量低|低活动|轻体力|low)').hasMatch(text)) {
+      return 'LOW';
+    }
+    if (RegExp(r'(?:经常运动|高强度|活动量高|高活动|重体力|每天运动|一周\s*(?:运动|锻炼|训练)?\s*[5-7五六七]\s*次|每周\s*(?:运动|锻炼|训练)?\s*[5-7五六七]\s*次|high)').hasMatch(text)) {
+      return 'HIGH';
+    }
+    if (RegExp(r'(?:中等|适中|普通活动|活动量中|每周\s*(?:运动|锻炼|训练)?\s*[2-4二三四]\s*次|一周\s*(?:运动|锻炼|训练)?\s*[2-4二三四]\s*次|medium)').hasMatch(text)) {
+      return 'MEDIUM';
+    }
+
+    final Iterable<RegExpMatch> matches = RegExp(r'(?:每周|一周|周)\s*(?:运动|锻炼|训练)?\s*([0-9一二两三四五六七])\s*次').allMatches(text);
+    for (final RegExpMatch match in matches) {
+      final int? count = _parseChineseDigit(match.group(1));
+      if (count == null) {
+        continue;
+      }
+      if (count <= 1) {
+        return 'LOW';
+      }
+      if (count >= 5) {
+        return 'HIGH';
+      }
+      return 'MEDIUM';
+    }
+    return null;
+  }
+
+  int? _parseChineseDigit(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    final int? numeric = int.tryParse(value);
+    if (numeric != null) {
+      return numeric;
+    }
+    return const {
+      '一': 1,
+      '二': 2,
+      '两': 2,
+      '三': 3,
+      '四': 4,
+      '五': 5,
+      '六': 6,
+      '七': 7,
+    }[value];
+  }
+
+  _ParsedProfileContext _mergeParsedContext(_ParsedProfileContext parsed) {
+    return _ParsedProfileContext(
+      age: parsed.age ?? int.tryParse(_ageController.text.trim()),
+      heightCm: parsed.heightCm ?? int.tryParse(_heightController.text.trim()),
+      weightKg: parsed.weightKg ?? double.tryParse(_weightController.text.trim()),
+      gender: parsed.gender ?? _gender,
+      activityLevel: parsed.activityLevel ?? _activity,
+    );
+  }
+
+  void _applyParsedContextToInputs(_ParsedProfileContext parsed) {
+    if (parsed.age != null) {
+      _ageController.text = parsed.age.toString();
+    }
+    if (parsed.heightCm != null) {
+      _heightController.text = parsed.heightCm.toString();
+    }
+    if (parsed.weightKg != null) {
+      _weightController.text = parsed.weightKg!.toStringAsFixed(1);
+    }
+    if (parsed.gender == 'MALE' || parsed.gender == 'FEMALE') {
+      _gender = parsed.gender!;
+    }
+    if (parsed.activityLevel == 'LOW' || parsed.activityLevel == 'MEDIUM' || parsed.activityLevel == 'HIGH') {
+      _activity = parsed.activityLevel!;
+    }
+  }
+
   Future<void> _useAssistant({required bool apply}) async {
     if (_assistantInput.text.trim().isEmpty) {
       setState(() => _assistantError = '请先输入或语音描述你的目标');
@@ -221,19 +394,22 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
     });
 
     try {
+      final _ParsedProfileContext parsedContext = _parseContextFromText(_assistantInput.text.trim());
+      final _ParsedProfileContext mergedContext = _mergeParsedContext(parsedContext);
       final Map<String, dynamic> parsed = await ApiService.instance.parseGoalByAssistant(
         rawText: _assistantInput.text.trim(),
-        age: int.tryParse(_ageController.text.trim()),
-        heightCm: int.tryParse(_heightController.text.trim()),
-        weightKg: double.tryParse(_weightController.text.trim()),
-        gender: _gender,
-        activityLevel: _activity,
+        age: mergedContext.age,
+        heightCm: mergedContext.heightCm,
+        weightKg: mergedContext.weightKg,
+        gender: mergedContext.gender,
+        activityLevel: mergedContext.activityLevel,
         applyToProfile: apply,
       );
 
       setState(() {
+        _applyParsedContextToInputs(parsedContext);
         _healthGoal = (parsed['healthGoal'] ?? _healthGoal).toString();
-        _dailyTarget = (parsed['dailyCalorieTarget'] ?? _dailyTarget) as int;
+        _dailyTarget = _normalizeDailyTarget(parsed['dailyCalorieTarget']);
         _restrictions
           ..clear()
           ..addAll(((parsed['dietaryRestrictions'] ?? []) as List).map((item) => item.toString()));
@@ -243,11 +419,11 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
       if (apply) {
         await ProfileContextService.instance.saveSnapshot(
           ProfileContextSnapshot(
-            age: int.tryParse(_ageController.text.trim()),
-            heightCm: int.tryParse(_heightController.text.trim()),
-            weightKg: double.tryParse(_weightController.text.trim()),
-            gender: _gender,
-            activityLevel: _activity,
+            age: mergedContext.age,
+            heightCm: mergedContext.heightCm,
+            weightKg: mergedContext.weightKg,
+            gender: mergedContext.gender,
+            activityLevel: mergedContext.activityLevel,
           ),
         );
         if (!mounted) return;
@@ -476,11 +652,11 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
                               const SizedBox(height: 14),
                               Slider(
                                 value: _dailyTarget.toDouble(),
-                                min: 1200,
-                                max: 3200,
+                                min: _minDailyTarget.toDouble(),
+                                max: _maxDailyTarget.toDouble(),
                                 divisions: 40,
                                 label: '$_dailyTarget 千卡',
-                                onChanged: (value) => setState(() => _dailyTarget = value.round()),
+                                onChanged: (value) => setState(() => _dailyTarget = _normalizeDailyTarget(value)),
                               ),
                               Text(
                                 '每日目标：$_dailyTarget 千卡',
@@ -590,4 +766,20 @@ class _RestrictionOption {
 
   final String code;
   final String label;
+}
+
+class _ParsedProfileContext {
+  const _ParsedProfileContext({
+    this.age,
+    this.heightCm,
+    this.weightKg,
+    this.gender,
+    this.activityLevel,
+  });
+
+  final int? age;
+  final int? heightCm;
+  final double? weightKg;
+  final String? gender;
+  final String? activityLevel;
 }

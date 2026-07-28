@@ -8,7 +8,9 @@ function Stop-AgentPythonProcesses {
     $py = Get-CimInstance Win32_Process -Filter "Name='python.exe'"
     foreach ($proc in $py) {
         $cmd = [string]$proc.CommandLine
-        if ($cmd -like "*nutri-agent*" -and $cmd -like "*main.py*") {
+        $looksLikeNewManagedAgent = $cmd -like "*nutri-agent*" -and $cmd -like "*main.py*"
+        $looksLikeLegacyManagedAgent = $cmd -eq '"G:\GraduationProj_Nutri-flow\envs\test\python.exe" main.py'
+        if ($looksLikeNewManagedAgent -or $looksLikeLegacyManagedAgent) {
             Stop-Process -Id ([int]$proc.ProcessId) -Force -ErrorAction SilentlyContinue
             Write-Output "[stop] agent child PID=$($proc.ProcessId)"
         }
@@ -72,7 +74,7 @@ Stop-ByPidFile -Name "inference"
 Stop-ByPidFile -Name "business"
 
 Stop-AgentPythonProcesses
-Stop-ListenerProcess -Name "inference" -Port 8001
-Stop-ListenerProcess -Name "business" -Port 8080
+Stop-ListenerProcess -Name "inference" -Port 18001
+Stop-ListenerProcess -Name "business" -Port 18080
 
 Write-Output "Managed services stopped."

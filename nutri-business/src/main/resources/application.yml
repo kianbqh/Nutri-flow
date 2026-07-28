@@ -14,9 +14,9 @@ spring:
 
   # ── MySQL ────────────────────────────────────────────────────────────────
   datasource:
-    url: jdbc:mysql://localhost:3307/nutri_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-    username: nutri_user
-    password: nutri_pass
+    url: ${NUTRI_DB_URL:jdbc:mysql://localhost:3307/nutri_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${NUTRI_DB_USERNAME:nutri_user}
+    password: ${NUTRI_DB_PASSWORD:nutri_pass}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -31,9 +31,9 @@ spring:
   # ── Redis ────────────────────────────────────────────────────────────────
   data:
     redis:
-      host: localhost
-      port: 6379
-      password: nutri_redis_pass
+      host: ${NUTRI_REDIS_HOST:localhost}
+      port: ${NUTRI_REDIS_PORT:6379}
+      password: ${NUTRI_REDIS_PASSWORD:nutri_redis_pass}
       timeout: 2000ms
       lettuce:
         pool:
@@ -43,11 +43,11 @@ spring:
 
   # ── RabbitMQ ─────────────────────────────────────────────────────────────
   rabbitmq:
-    host: localhost
-    port: 5672
-    username: nutri_mq
-    password: nutri_mq_pass
-    virtual-host: /
+    host: ${NUTRI_RABBITMQ_HOST:localhost}
+    port: ${NUTRI_RABBITMQ_PORT:5672}
+    username: ${NUTRI_RABBITMQ_USERNAME:nutri_mq}
+    password: ${NUTRI_RABBITMQ_PASSWORD:nutri_mq_pass}
+    virtual-host: ${NUTRI_RABBITMQ_VHOST:/}
     publisher-confirm-type: correlated
     publisher-returns: true
     listener:
@@ -57,11 +57,11 @@ spring:
 
 # ── OSS / MinIO (S3-compatible) ─────────────────────────────────────────────
 oss:
-  endpoint: http://localhost:9000
-  access-key: nutri_oss
-  secret-key: nutri_oss_pass
-  bucket-name: nutri-bucket
-  region: us-east-1       # MinIO ignores region; Aliyun uses e.g. oss-cn-hangzhou
+  endpoint: ${NUTRI_OSS_ENDPOINT:http://localhost:9000}
+  access-key: ${NUTRI_OSS_ACCESS_KEY:nutri_oss}
+  secret-key: ${NUTRI_OSS_SECRET_KEY:nutri_oss_pass}
+  bucket-name: ${NUTRI_OSS_BUCKET:nutri-bucket}
+  region: ${NUTRI_OSS_REGION:us-east-1}
 
 # ── RabbitMQ exchange / queue names ─────────────────────────────────────────
 mq:

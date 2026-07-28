@@ -147,6 +147,13 @@ export async function getTaskStatus(taskId) {
   return data
 }
 
+export async function getTaskImageBlob(taskId) {
+  const { data } = await api.get(`/diet-logs/${taskId}/image`, {
+    responseType: 'blob',
+  })
+  return data
+}
+
 /**
  * Fetch user nutrition profile.
  * @param {string|number} userId

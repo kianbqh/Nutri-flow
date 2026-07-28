@@ -2,8 +2,8 @@
 nutri-ai-mcp – FastAPI application entry point.
 
 Starts:
-  • FastAPI HTTP inference API  (for direct REST calls / health checks)
-  • MCP Server                  (for tool invocation by nutri-agent)
+  • FastAPI HTTP inference API  (production agent path / health checks)
+  • MCP Server                  (SSE tool surface for protocol experiments)
 """
 
 import logging
@@ -24,7 +24,7 @@ app = FastAPI(
     title="Nutri-AI MCP Service",
     description=(
         "Swin Transformer food instance-segmentation service. "
-        "Exposes a REST API and an MCP tool interface for nutri-agent."
+        "Exposes a REST API for the agent and an MCP tool interface for experiments."
     ),
     version="0.1.0",
 )

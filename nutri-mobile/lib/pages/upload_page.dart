@@ -92,7 +92,7 @@ class _UploadPageState extends State<UploadPage> {
         });
       });
     } catch (e) {
-      setState(() => _error = ApiService.describeError(e, action: '分析'));
+      setState(() => _error = ApiService.describeError(e, action: '提交分析'));
     } finally {
       if (mounted) {
         setState(() => _loading = false);

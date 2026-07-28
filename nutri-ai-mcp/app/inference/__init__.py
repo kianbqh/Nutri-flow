@@ -19,6 +19,7 @@ import time
 import logging
 import base64
 import io
+import math
 import os
 import re
 from pathlib import Path
@@ -203,9 +204,12 @@ _model: NutriSegModel | None = None
 _model_version: str = "swin-t-bifpn-ca-v1-random-init"
 
 try:
-    from app.training.build_stage6_c1_mapping import FOODSEG103_CLASSES
+    from app.training.build_stage6_c1_mapping import FOODSEG103_CLASSES, infer_profile
 except Exception:
     FOODSEG103_CLASSES = {0: "background"}
+
+    def infer_profile(class_name: str) -> tuple[float, float, str, str]:
+        return (0.0, 0.0, "background", "high") if class_name == "background" else (120.0, 100.0, "mixed", "low")
 
 
 def _load_class_priors() -> dict[int, dict[str, float | str]]:
@@ -229,14 +233,44 @@ def _load_class_priors() -> dict[int, dict[str, float | str]]:
         except Exception as exc:
             logger.warning("Failed to load class prior CSV: %s", exc)
 
-    if not priors:
-        for class_id, class_name in FOODSEG103_CLASSES.items():
+    for class_id, class_name in FOODSEG103_CLASSES.items():
+        if class_id not in priors:
+            kcal_100g, portion_g, density_group, _confidence = infer_profile(class_name)
             priors[class_id] = {
                 "class_name": class_name,
-                "kcal_100g": 120.0,
-                "default_portion_g": 100.0,
-                "density_group": "mixed",
+                "kcal_100g": float(kcal_100g),
+                "default_portion_g": float(portion_g),
+                "density_group": density_group,
             }
+
+    # Runtime calibration for common foods where the generated v1 CSV was too
+    # conservative. This keeps calorie estimates credible even when a stale
+    # local CSV is present.
+    overrides: dict[str, tuple[float, float, str]] = {
+        "french fries": (312.0, 110.0, "staple"),
+        "popcorn": (387.0, 45.0, "staple"),
+        "dried cranberries": (325.0, 40.0, "fruit"),
+        "avocado": (160.0, 120.0, "fruit"),
+        "olives": (145.0, 40.0, "fruit"),
+        "hamburg": (260.0, 180.0, "staple"),
+        "pizza": (266.0, 160.0, "staple"),
+        "bread": (265.0, 90.0, "staple"),
+        "pasta": (157.0, 180.0, "staple"),
+        "noodles": (138.0, 200.0, "staple"),
+        "rice": (130.0, 180.0, "staple"),
+        "fried meat": (280.0, 140.0, "protein"),
+        "sausage": (301.0, 90.0, "protein"),
+        "cheese butter": (520.0, 35.0, "dessert"),
+        "sauce": (220.0, 25.0, "condiment"),
+    }
+    for prior in priors.values():
+        class_name = str(prior.get("class_name") or "").strip().lower()
+        override = overrides.get(class_name)
+        if override:
+            kcal_100g, portion_g, density_group = override
+            prior["kcal_100g"] = kcal_100g
+            prior["default_portion_g"] = portion_g
+            prior["density_group"] = density_group
     return priors
 
 
@@ -459,6 +493,43 @@ def _build_nutrition(class_id: int, class_name: str, estimated_weight_g: float |
     }
 
 # Per-class average portion weight in grams – used for pixel-area weight estimation.
+def _estimate_portion_weight_g(
+    area_ratio: float,
+    bbox_ratio: float,
+    default_portion_g: float,
+    density_group: str,
+) -> float | None:
+    """Estimate visible portion weight from mask size."""
+    if area_ratio <= 0 or default_portion_g <= 0:
+        return None
+
+    area_scale = area_ratio / 0.40
+    sqrt_scale = math.sqrt(max(area_scale, 0.0))
+    bbox_scale = math.sqrt(max(bbox_ratio / 0.55, 0.0)) if bbox_ratio > 0 else 0.0
+    scale = max(area_scale, sqrt_scale, bbox_scale * 0.85)
+
+    min_scale_by_group = {
+        "staple": 0.35,
+        "protein": 0.35,
+        "dessert": 0.30,
+        "mixed": 0.30,
+        "fruit": 0.25,
+        "vegetable": 0.22,
+        "liquid": 0.45,
+        "nut": 0.18,
+        "condiment": 0.12,
+        "background": 0.0,
+    }
+    max_scale_by_group = {
+        "liquid": 1.4,
+        "condiment": 1.2,
+        "nut": 1.6,
+    }
+    scale = max(scale, min_scale_by_group.get(density_group, 0.30))
+    scale = min(scale, max_scale_by_group.get(density_group, 1.8))
+    return round(default_portion_g * scale, 1)
+
+
 _PORTION_WEIGHTS_G: dict[str, float] = {
     "background": 0.0, "rice": 180.0, "noodles": 200.0, "chicken": 150.0,
     "beef": 120.0, "pork": 130.0, "fish": 140.0, "tofu": 100.0,
@@ -508,6 +579,21 @@ def _encode_mask_rle(binary_mask: np.ndarray) -> str | None:
             current_value = value
     counts.append(run_length)
     return " ".join(map(str, counts))
+
+
+def _pick_fallback_non_background_index(probs: np.ndarray) -> int | None:
+    """Pick the strongest non-background class index for coarse fallback.
+
+    Some degenerate runtime outputs can collapse to background-only mass. In
+    that case we should degrade to an empty detection list instead of forcing a
+    non-existent class slot and crashing the whole analysis chain.
+    """
+    flat_probs = np.asarray(probs, dtype=np.float32).reshape(-1)
+    if flat_probs.size <= 1:
+        return None
+
+    top_k_indices = np.argsort(flat_probs)[::-1]
+    return next((int(index) for index in top_k_indices if int(index) != 0), None)
 
 
 def get_model() -> NutriSegModel:
@@ -697,7 +783,14 @@ def run_inference(
             area_ratio = float(area) / float(comp_mask.size)
             prior = _CLASS_PRIORS.get(int(class_id), {})
             avg_portion_g = float(prior.get("default_portion_g", _PORTION_WEIGHTS_G.get(class_name, 100.0)))
-            estimated_weight_g = round(area_ratio * avg_portion_g / 0.4, 1) if area_ratio > 0 else None
+            bbox_ratio = float((x_max - x_min) * (y_max - y_min)) / float(comp_mask.size)
+            density_group = str(prior.get("density_group", "mixed"))
+            estimated_weight_g = _estimate_portion_weight_g(
+                area_ratio,
+                bbox_ratio,
+                avg_portion_g,
+                density_group,
+            )
             nutrition = _build_nutrition(int(class_id), class_name, estimated_weight_g)
 
             detections.append({
@@ -717,33 +810,43 @@ def run_inference(
     if not detections:
         pooled = cls_logits[0].mean(dim=[1, 2])
         probs = torch.softmax(pooled, dim=0).cpu().numpy()
-        top_k_indices = np.argsort(probs)[::-1]
-        non_bg_mass = float(max(1e-8, 1.0 - float(probs[0]) if probs.shape[0] > 0 else 1.0))
-        fallback_idx = next((i for i in top_k_indices if i != 0), 1)
-        fallback_raw = float(probs[fallback_idx])
-        fallback_score = min(1.0, fallback_raw / non_bg_mass)
-        fallback_label = _class_name(int(fallback_idx))
-        fallback_display = _display_name_zh(int(fallback_idx), fallback_label)
+        fallback_idx = _pick_fallback_non_background_index(probs)
+        if fallback_idx is not None:
+            non_bg_mass = float(max(1e-8, 1.0 - float(probs[0]) if probs.shape[0] > 0 else 1.0))
+            fallback_raw = float(probs[fallback_idx])
+            fallback_score = min(1.0, fallback_raw / non_bg_mass)
+            fallback_label = _class_name(int(fallback_idx))
+            fallback_display = _display_name_zh(int(fallback_idx), fallback_label)
 
-        area_ratio = float(valid_mask.sum()) / float(valid_mask.size) if np.any(valid_mask) else float(foreground_mask.sum()) / float(foreground_mask.size)
-        prior = _CLASS_PRIORS.get(int(fallback_idx), {})
-        avg_portion_g = float(prior.get("default_portion_g", _PORTION_WEIGHTS_G.get(fallback_label, 100.0)))
-        estimated_weight_g = round(area_ratio * avg_portion_g / 0.4, 1) if area_ratio > 0 else 100.0
-        nutrition = _build_nutrition(int(fallback_idx), fallback_label, estimated_weight_g)
+            area_ratio = float(valid_mask.sum()) / float(valid_mask.size) if np.any(valid_mask) else float(foreground_mask.sum()) / float(foreground_mask.size)
+            prior = _CLASS_PRIORS.get(int(fallback_idx), {})
+            avg_portion_g = float(prior.get("default_portion_g", _PORTION_WEIGHTS_G.get(fallback_label, 100.0)))
+            density_group = str(prior.get("density_group", "mixed"))
+            estimated_weight_g = _estimate_portion_weight_g(
+                area_ratio,
+                area_ratio,
+                avg_portion_g,
+                density_group,
+            )
+            if estimated_weight_g is None:
+                estimated_weight_g = avg_portion_g
+            nutrition = _build_nutrition(int(fallback_idx), fallback_label, estimated_weight_g)
 
-        coarse_mask = valid_mask if np.any(valid_mask) else foreground_mask
-        detections.append({
-            "class_id": int(fallback_idx),
-            "class_name": fallback_label,
-            "display_name": fallback_display,
-            "label": fallback_label,
-            "confidence": round(fallback_score, 4),
-            "bbox": [0.0, 0.0, float(input_size), float(input_size)],
-            "mask_rle": _encode_mask_rle(coarse_mask),
-            "mask_shape": [int(coarse_mask.shape[0]), int(coarse_mask.shape[1])],
-            "estimated_weight_g": estimated_weight_g,
-            "nutrition": nutrition,
-        })
+            coarse_mask = valid_mask if np.any(valid_mask) else foreground_mask
+            detections.append({
+                "class_id": int(fallback_idx),
+                "class_name": fallback_label,
+                "display_name": fallback_display,
+                "label": fallback_label,
+                "confidence": round(fallback_score, 4),
+                "bbox": [0.0, 0.0, float(input_size), float(input_size)],
+                "mask_rle": _encode_mask_rle(coarse_mask),
+                "mask_shape": [int(coarse_mask.shape[0]), int(coarse_mask.shape[1])],
+                "estimated_weight_g": estimated_weight_g,
+                "nutrition": nutrition,
+            })
+        else:
+            logger.info("Inference produced background-only coarse logits; returning empty detections")
 
     detections.sort(key=lambda d: (float(d.get("confidence", 0.0)), float((d.get("bbox") or [0, 0, 0, 0])[2] - (d.get("bbox") or [0, 0, 0, 0])[0])), reverse=True)
 

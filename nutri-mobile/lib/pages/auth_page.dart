@@ -149,10 +149,17 @@ class _AuthPageState extends State<AuthPage> {
                       ),
                       const SizedBox(width: 12),
                       SizedBox(
-                        width: 124,
+                        width: 136,
                         child: FilledButton(
                           onPressed: _sending || _verifying ? null : _sendCode,
-                          child: Text(_sending ? '发送中' : '获取验证码'),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              _sending ? '发送中' : '发送验证码',
+                              maxLines: 1,
+                              softWrap: false,
+                            ),
+                          ),
                         ),
                       ),
                     ],

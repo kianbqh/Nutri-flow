@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/app_models.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/profile_context_service.dart';
 import '../utils/navigation_utils.dart';
 import '../widgets/app_chrome.dart';
 
@@ -19,6 +20,7 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _loading = false;
   bool _savingNickname = false;
   bool _editingNickname = false;
+  bool _signingOut = false;
   String? _error;
   int? _userId;
   String? _phone;
@@ -187,12 +189,75 @@ class _ProfilePageState extends State<ProfilePage> {
     });
   }
 
+  Future<void> _signOut() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('退出登录'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('退出后会回到登录页，本机保存的基础信息上下文也会清除。'),
+            const SizedBox(height: 22),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('取消'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('退出登录'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+
+    setState(() {
+      _signingOut = true;
+      _error = null;
+    });
+
+    try {
+      await AuthService.instance.signOut();
+      await ProfileContextService.instance.clearSnapshot();
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, RoutePaths.auth, (_) => false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '退出登录失败：$e');
+    } finally {
+      if (mounted) {
+        setState(() => _signingOut = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('个人主页'),
         leading: const SafeBackButton(),
+        actions: [
+          IconButton(
+            tooltip: '退出登录',
+            onPressed: _signingOut ? null : _signOut,
+            icon: const Icon(Icons.logout_rounded),
+          ),
+        ],
       ),
       body: _loading
           ? const AppSoftBackground(child: Center(child: CircularProgressIndicator()))
@@ -270,6 +335,12 @@ class _ProfilePageState extends State<ProfilePage> {
                             onPressed: _savingNickname ? null : _startEditNickname,
                             icon: const Icon(Icons.edit_outlined),
                             label: Text(_nicknameActionLabel),
+                          ),
+                          const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            onPressed: _signingOut ? null : _signOut,
+                            icon: const Icon(Icons.logout_rounded),
+                            label: Text(_signingOut ? '退出中...' : '退出登录'),
                           ),
                           const SizedBox(height: 8),
                           const Text(

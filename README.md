@@ -1,51 +1,140 @@
 # Nutri-flow
-Nutri-Flow (灵动食迹) —— 全栈智慧饮食管理系统
 
-Nutri-Flow 是一款将前沿计算机视觉技术与大模型智能体深度结合的智慧健康应用。系统通过高性能的实例分割技术准确“感知”食物，并利用基于状态机的工作流引擎提供“有温度”的膳食建议。
-✨ 核心特性
+Nutri-flow is a full-stack AI dietary analysis system. It connects meal-image
+upload, food instance segmentation, calorie estimation, and personalized
+nutrition advice into one asynchronous workflow.
 
-    多模态感知：采用改进的 Swin Transformer 架构，引入 BiFPN 与坐标注意力机制（Coordinate Attention），实现复杂背景下高精度的食物实例分割。
+The project is designed as a graduation-project showcase: the user experience
+is visible in Vue and Flutter clients, while the backend demonstrates service
+decoupling, queue-based inference, an agent workflow, and model-version
+governance.
 
-    智能决策大脑：基于 LangGraph 构建多层 Agent 工作流，集成 RAG（检索增强生成）技术与用户长期记忆模块，提供科学且个性化的营养分析。
+## Highlights
 
-    工业级微服务：采用 Spring Boot 与 FastAPI 构建异步解耦架构，通过 RabbitMQ 实现高性能推理任务调度，并遵循 MCP (Model Context Protocol) 协议实现算法与逻辑的标准化通信。
+- Food instance segmentation based on Swin-Tiny, BiFPN, and Coordinate
+  Attention.
+- Calorie and macro estimates generated from segmented food instances and
+  calibrated FoodSeg103 nutrition priors.
+- LangGraph agent workflow with user memory, nutrition knowledge retrieval,
+  rule-based fallback advice, and LLM-enhanced coaching when an API key is
+  configured.
+- Spring Boot business service with MySQL persistence, Redis-assisted login,
+  RabbitMQ task dispatch, and MinIO/OSS image storage.
+- Vue 3 web client and Flutter mobile client with upload, polling, result
+  detail, mask visualization, profile, goals, and history views.
 
-    交互式前端：基于 Vue 3 打造动态 Canvas 蒙版交互，支持实时渲染与用户在线微调分割结果。
+## Architecture
 
+```text
+Vue / Flutter client
+        |
+        v
+Spring Boot business API  --->  MySQL / Redis / MinIO
+        |
+        v
+RabbitMQ task queue
+        |
+        v
+LangGraph nutri-agent  --->  Chroma nutrition/user memory
+        |
+        v
+FastAPI nutri-ai-mcp segmentation service
+        |
+        v
+RabbitMQ result queue -> Spring Boot -> client polling/history
+```
 
-Nutri-Flow: A Full-Stack AI-Powered Dietary Management System
+The model service exposes a REST endpoint used by the production workflow and
+an MCP SSE tool interface for protocol-level experimentation.
 
-Nutri-Flow is an intelligent health application that seamlessly integrates cutting-edge Computer Vision with Large Language Model (LLM) Agents. It "perceives" dietary intake via high-performance instance segmentation and "reasons" through an advanced state-machine workflow engine.
-✨ Key Features
+## Repository Layout
 
-    Multimodal Perception: Powered by an enhanced Swin Transformer with BiFPN and Coordinate Attention, delivering high-precision food instance segmentation in complex environments.
+```text
+contracts/       JSON contracts shared between services
+docs/            Software-engineering, experiment, and thesis notes
+nutri-agent/     Python LangGraph consumer and nutrition-advice workflow
+nutri-ai-mcp/    FastAPI segmentation service and training/inference code
+nutri-business/  Spring Boot business API
+nutri-mobile/    Flutter mobile client
+nutri-web/       Vue 3 web client
+scripts/         Windows PowerShell dev orchestration scripts
+```
 
-    Agentic Decision Brain: A multi-layer workflow built on LangGraph, integrating RAG (Retrieval-Augmented Generation) and long-term user memory for evidence-based, personalized nutritional coaching.
+## Default Model
 
-    Industrial Microservices: An asynchronous decoupled architecture using Spring Boot and FastAPI, orchestrated by RabbitMQ for task scheduling, and following the MCP (Model Context Protocol) for standardized tool calling.
+The current application default is:
 
-    Interactive Frontend: A Vue 3-based interface featuring dynamic Canvas mask rendering, allowing users to interact with and refine segmentation results in real-time.
+```text
+Stage7S1 Phase A
+best_stage7s1_tiny_img512_mask135_cls095_phaseA_12ep.pth
+```
 
-## Local Dev Quick Start (Windows PowerShell)
+It is selected by the project gate records as the best released checkpoint in
+the current experiment series. Large checkpoint files are intentionally ignored
+by Git; configure the local path through `NUTRI_SEG_CHECKPOINT` or use
+`scripts/dev-up.ps1`, which sets the default path for the local workspace.
 
-Use the following scripts to avoid manual multi-terminal startup and reduce timeout issues caused by missing consumers.
+## Local Development
 
-1. Start local stack (infra + inference + business + agent):
+Requirements:
 
-    `powershell -ExecutionPolicy Bypass -File scripts/dev-up.ps1`
+- Windows PowerShell
+- Docker Desktop
+- Local model weights under `nutri-ai-mcp/weights_by_category/...`
+- Bundled tools in `.tools/` or equivalent local Node, Maven, Flutter, and
+  Python environments
 
-    If Docker infra is already running:
+Start the full local stack:
 
-    `powershell -ExecutionPolicy Bypass -File scripts/dev-up.ps1 -SkipDocker`
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/dev-up.ps1
+```
 
-2. Health check (HTTP endpoints + RabbitMQ task consumer):
+If Docker infrastructure is already running:
 
-    `powershell -ExecutionPolicy Bypass -File scripts/dev-health.ps1`
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/dev-up.ps1 -SkipDocker
+```
 
-3. Stop managed services started by dev-up:
+Run health checks:
 
-    `powershell -ExecutionPolicy Bypass -File scripts/dev-down.ps1`
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/dev-health.ps1
+```
 
-Managed logs are written to:
+Stop managed services:
 
-`./.runtime/logs`
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/dev-down.ps1
+```
+
+Managed logs are written to `.runtime/logs`.
+
+## Validation
+
+Useful local checks:
+
+```powershell
+cd nutri-business
+..\.tools\apache-maven-3.9.9\bin\mvn.cmd "-Dmaven.repo.local=..\.tools\m2\repository" -q -DskipTests compile
+
+cd ..\nutri-web
+npm run build
+```
+
+The Flutter client can be checked with:
+
+```powershell
+cd nutri-mobile
+..\.tools\flutter_sdk_3.41.6\flutter\bin\flutter.bat analyze
+```
+
+## Notes
+
+- Calorie values are estimates for dietary feedback, not medical or clinical
+  measurements.
+- The demo login flow returns a debug verification code for local testing.
+  Production deployment should replace it with a real verification provider
+  and authenticated API access.
+- Model weights, datasets, local toolchains, caches, and runtime logs are not
+  committed to Git.

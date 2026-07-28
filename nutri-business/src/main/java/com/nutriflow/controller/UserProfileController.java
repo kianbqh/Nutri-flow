@@ -168,7 +168,7 @@ public class UserProfileController {
             default -> tdee;
         };
 
-        return (int) Math.max(1200, Math.min(3800, Math.round(target)));
+        return (int) Math.max(1200, Math.min(3200, Math.round(target)));
     }
 
     private boolean containsAny(String text, String... keys) {

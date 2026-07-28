@@ -222,14 +222,17 @@ class AnalysisResult {
       return const [];
     }
 
+    final status = (json['status'] ?? 'PENDING').toString();
+    final errorMessage = (json['errorMessage']
+        ?? analysis['errorMessage']
+        ?? analysis['error']
+        ?? seg['error'])
+        ?.toString();
+
     return AnalysisResult(
       taskId: (json['taskId'] ?? analysis['taskId'] ?? '').toString(),
-      status: (json['status'] ?? 'PENDING').toString(),
-      errorMessage: (json['errorMessage']
-          ?? analysis['errorMessage']
-          ?? analysis['error']
-          ?? seg['error'])
-          ?.toString(),
+      status: status,
+      errorMessage: status == 'COMPLETED' ? null : errorMessage,
       adviceReport: (analysis['adviceReport'] ?? '暂无建议').toString(),
       detectedItems: items,
       totalCalories: ((analysis['totalCalories'] as num?)?.toDouble()) ?? total,

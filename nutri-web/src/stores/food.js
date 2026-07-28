@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { uploadMealImage, getTaskStatus } from '@/api/dietLog'
+import { uploadMealImage, getTaskStatus, getTaskImageBlob } from '@/api/dietLog'
+import { resolveFoodLabel } from '@/utils/foodLabels'
 
 // ── Polling configuration ─────────────────────────────────────────────────────
 const POLL_INTERVAL_MS = 3_000    // check every 3 s
@@ -20,18 +21,19 @@ export const useFoodStore = defineStore('food', () => {
   const taskId = ref(null)
   const status = ref('IDLE') // IDLE | UPLOADING | PENDING | COMPLETED | FAILED
   const previewUrl = ref(null)
+  const segmentationPreviewUrl = ref(null)
   const detectedItems = ref([])
-  const masks = ref([])        // array of { label, color, rleData, bbox }
   const adviceReport = ref(null)
   const error = ref(null)
 
   /** Internal polling timer handle */
   let _pollTimer = null
   let _pollStart = 0
+  let _ownedPreviewUrl = null
 
   // ── Getters ────────────────────────────────────────────────────────────
   const totalCalories = computed(() =>
-    detectedItems.value.reduce((sum, item) => sum + (item.nutrition?.calories_kcal ?? 0), 0)
+    detectedItems.value.reduce((sum, item) => sum + (item.nutrition?.calories_kcal ?? item.calories ?? 0), 0)
   )
 
   const isLoading = computed(() =>
@@ -49,7 +51,7 @@ export const useFoodStore = defineStore('food', () => {
   async function uploadAndAnalyse(file, mealType) {
     reset()
     status.value = 'UPLOADING'
-    previewUrl.value = URL.createObjectURL(file)
+    setOwnedPreviewUrl(URL.createObjectURL(file))
 
     try {
       const response = await uploadMealImage(file, mealType)
@@ -110,34 +112,85 @@ export const useFoodStore = defineStore('food', () => {
    * @param {object} result - full analysisResult JSON
    */
   function applyAnalysisResult(result) {
-    detectedItems.value = result.segmentationResult?.detected_items ?? []
-    masks.value = detectedItems.value.map((item, i) => ({
-      label: item.label,
-      color: _paletteColor(i),
-      bbox: item.bbox,
-      rleData: item.mask_rle,
-    }))
+    const rawItems = result.segmentationResult?.detected_instances ?? result.segmentationResult?.detected_items ?? []
+
+    detectedItems.value = rawItems.map(item => normalizeDetectedItem(item))
+    segmentationPreviewUrl.value = toDataUrl(result.segmentationResult?.segmentation_preview_png_base64)
     adviceReport.value = result.adviceReport
     status.value = 'COMPLETED'
+  }
+
+  async function loadTaskDetail(id) {
+    stopPolling()
+    error.value = null
+    taskId.value = id
+    status.value = 'PENDING'
+
+    try {
+      const result = await getTaskStatus(id)
+      status.value = result.status || 'PENDING'
+
+      if (result.status === 'COMPLETED' && result.analysisResult) {
+        try {
+          const imageBlob = await getTaskImageBlob(id)
+          if (imageBlob && imageBlob.size > 0) {
+            setOwnedPreviewUrl(URL.createObjectURL(imageBlob))
+          }
+        } catch {
+          clearOwnedPreviewUrl()
+        }
+
+        applyAnalysisResult(result.analysisResult)
+        status.value = 'COMPLETED'
+        return result
+      }
+
+      if (result.status === 'FAILED') {
+        detectedItems.value = []
+        segmentationPreviewUrl.value = null
+        adviceReport.value = ''
+        error.value = result.errorMessage || result.analysisResult?.errorMessage || '分析失败'
+      }
+
+      return result
+    } catch (err) {
+      error.value = err?.response?.data?.error || err?.message || '加载任务详情失败'
+      status.value = 'FAILED'
+      throw err
+    }
   }
 
   function reset() {
     stopPolling()
     taskId.value = null
     status.value = 'IDLE'
-    previewUrl.value = null
+    clearOwnedPreviewUrl()
+    segmentationPreviewUrl.value = null
     detectedItems.value = []
-    masks.value = []
     adviceReport.value = null
     error.value = null
+  }
+
+  function setOwnedPreviewUrl(url) {
+    clearOwnedPreviewUrl()
+    previewUrl.value = url
+    _ownedPreviewUrl = url
+  }
+
+  function clearOwnedPreviewUrl() {
+    if (_ownedPreviewUrl && _ownedPreviewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(_ownedPreviewUrl)
+    }
+    _ownedPreviewUrl = null
+    previewUrl.value = null
   }
 
   return {
     taskId,
     status,
     previewUrl,
+    segmentationPreviewUrl,
     detectedItems,
-    masks,
     adviceReport,
     error,
     totalCalories,
@@ -146,6 +199,7 @@ export const useFoodStore = defineStore('food', () => {
     startPolling,
     stopPolling,
     applyAnalysisResult,
+    loadTaskDetail,
     reset,
   }
 })
@@ -162,4 +216,79 @@ const PALETTE = [
 
 function _paletteColor(index) {
   return PALETTE[index % PALETTE.length]
+}
+
+function normalizeDetectedItem(item) {
+  const nutrition = normalizeNutrition(item)
+  const displayLabel = resolveFoodLabel(item)
+
+  return {
+    ...item,
+    class_id: item.class_id ?? item.classId ?? null,
+    class_name: (item.class_name ?? item.className ?? '').toString(),
+    display_name: (item.display_name ?? item.displayName ?? '').toString(),
+    label: (item.label ?? item.class_name ?? item.className ?? '').toString(),
+    displayLabel,
+    confidence: toNumber(item.confidence_score ?? item.confidence),
+    estimated_weight_g: toNullableNumber(item.estimated_weight_g ?? item.weight_g ?? item.estimatedWeightG),
+    calories: nutrition.calories_kcal,
+    bbox: parseBbox(item.bbox),
+    mask_rle: (item.mask_rle ?? item.maskRle ?? '').toString(),
+    mask_shape: parseMaskShape(item.mask_shape ?? item.maskShape),
+    nutrition,
+  }
+}
+
+function normalizeNutrition(item) {
+  const nutrition = item.nutrition ?? {}
+
+  return {
+    ...nutrition,
+    calories_kcal: toNullableNumber(nutrition.calories_kcal ?? item.calories),
+    protein_g: toNullableNumber(nutrition.protein_g ?? item.protein_g),
+    fat_g: toNullableNumber(nutrition.fat_g ?? item.fat_g),
+    carbs_g: toNullableNumber(nutrition.carbs_g ?? item.carbs_g),
+  }
+}
+
+function parseBbox(value) {
+  if (!Array.isArray(value)) {
+    return null
+  }
+
+  return value.map(item => toNumber(item))
+}
+
+function parseMaskShape(value) {
+  if (!Array.isArray(value) || value.length < 2) {
+    return null
+  }
+
+  const shape = value.slice(0, 2).map(item => Number.parseInt(item, 10))
+  return shape.every(Number.isFinite) ? shape : null
+}
+
+function toNumber(value) {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function toNullableNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function toDataUrl(base64) {
+  const normalized = (base64 || '').toString().trim()
+  if (!normalized) {
+    return null
+  }
+  if (normalized.startsWith('data:')) {
+    return normalized
+  }
+  return `data:image/png;base64,${normalized}`
 }
