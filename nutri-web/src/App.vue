@@ -1,6 +1,19 @@
 <template>
   <div id="app-root">
-    <div class="app-shell">
+    <div v-if="route.meta.admin" class="admin-shell">
+      <header class="admin-topbar">
+        <div>
+          <span>Nutri-Flow</span>
+          <strong>运行数据看板</strong>
+        </div>
+        <RouterLink to="/" class="admin-topbar__back">返回应用</RouterLink>
+      </header>
+      <main class="admin-main">
+        <RouterView />
+      </main>
+    </div>
+
+    <div v-else class="app-shell">
       <header class="shell-header">
         <section class="brand-block">
           <div class="brand-kicker">
@@ -157,6 +170,56 @@ textarea:focus {
   min-width: 0;
   max-width: 1240px;
   margin: 0 auto;
+}
+
+.admin-shell {
+  width: 100%;
+  max-width: 1380px;
+  margin: 0 auto;
+}
+
+.admin-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 18px;
+  padding: 14px 18px;
+  border: 1px solid #d9ddd9;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 20px rgba(52, 62, 55, 0.07);
+}
+
+.admin-topbar > div {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.admin-topbar span {
+  color: #647268;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.admin-topbar strong {
+  color: #233129;
+  font-size: 1.05rem;
+}
+
+.admin-topbar__back {
+  padding: 9px 12px;
+  border: 1px solid #cdd5cf;
+  border-radius: 6px;
+  color: #32463a;
+  background: #fff;
+  font-weight: 700;
+}
+
+.admin-main {
+  min-width: 0;
 }
 
 .shell-header {
@@ -555,6 +618,15 @@ textarea:focus {
 
   .surface-card {
     padding: 18px;
+  }
+
+  .admin-topbar {
+    align-items: flex-start;
+  }
+
+  .admin-topbar > div {
+    display: grid;
+    gap: 2px;
   }
 }
 </style>

@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'pages/auth_page.dart';
+import 'pages/access_gate_page.dart';
 import 'pages/upload_page.dart';
 import 'pages/profile_page.dart';
 import 'pages/goal_settings_page.dart';
 import 'pages/history_page.dart';
 import 'pages/onboarding_page.dart';
 import 'services/auth_service.dart';
+import 'services/access_code_service.dart';
 import 'utils/navigation_utils.dart';
 
 void main() {
@@ -22,9 +24,11 @@ class NutriMobileApp extends StatelessWidget {
   Future<_LaunchState> _loadLaunchState() async {
     final prefs = await SharedPreferences.getInstance();
     await AuthService.instance.ensureLoaded();
+    await AccessCodeService.instance.ensureLoaded();
     return _LaunchState(
       onboardingSeen: prefs.getBool(_onboardingKey) ?? false,
       signedIn: AuthService.instance.isSignedIn,
+      accessGranted: AccessCodeService.instance.hasAccessCode,
     );
   }
 
@@ -122,6 +126,20 @@ class NutriMobileApp extends StatelessWidget {
             );
           }
           final state = snapshot.data!;
+          if (!state.accessGranted) {
+            return AccessGatePage(
+              onGranted: () {
+                final destination = !state.onboardingSeen
+                    ? const OnboardingPage()
+                    : !state.signedIn
+                        ? const AuthPage()
+                        : const HomePage();
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (_) => destination),
+                );
+              },
+            );
+          }
           if (!state.onboardingSeen) {
             return const OnboardingPage();
           }
@@ -136,10 +154,15 @@ class NutriMobileApp extends StatelessWidget {
 }
 
 class _LaunchState {
-  const _LaunchState({required this.onboardingSeen, required this.signedIn});
+  const _LaunchState({
+    required this.onboardingSeen,
+    required this.signedIn,
+    required this.accessGranted,
+  });
 
   final bool onboardingSeen;
   final bool signedIn;
+  final bool accessGranted;
 }
 
 class HomePage extends StatelessWidget {

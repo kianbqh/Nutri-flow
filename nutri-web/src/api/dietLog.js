@@ -214,3 +214,12 @@ export async function getDietLogHistory(userId, page = 0, size = 10) {
   })
   return data
 }
+
+export async function getAdminDashboard(adminKey) {
+  const { data } = await api.get('/admin/dashboard', {
+    headers: {
+      'X-Nutri-Admin-Key': adminKey,
+    },
+  })
+  return data
+}

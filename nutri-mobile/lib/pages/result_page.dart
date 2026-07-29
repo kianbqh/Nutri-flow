@@ -22,6 +22,7 @@ class ResultPage extends StatelessWidget {
 
   static const int _defaultVisibleItemCount = 5;
   static const int _defaultOverlayItemCount = 5;
+  static const double _adviceConfidenceThreshold = 0.65;
 
   static const Map<String, String> _labelZh = {
     'background': '背景',
@@ -315,7 +316,7 @@ class ResultPage extends StatelessWidget {
                         child: ListTile(
                           onTap: () => _showGroupDetail(context, group),
                           title: Text(group.displayName),
-                          subtitle: Text('${group.instanceCount} 个区域 · 置信度 ${(group.averageConfidence * 100).toStringAsFixed(1)}%'),
+                          subtitle: Text(_groupSubtitle(group)),
                           trailing: Text(
                             '${group.totalCalories.toStringAsFixed(1)} 千卡',
                           ),
@@ -333,6 +334,26 @@ class ResultPage extends StatelessWidget {
                 ),
               ),
             ],
+          ],
+          if (allGroups.any((group) => group.isLowConfidence)) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFF0D3AD)),
+              ),
+              child: const Text(
+                '低于 65% 的类别仅作为待确认线索，不用于生成点名食物的具体建议。',
+                style: TextStyle(
+                  color: Color(0xFF80552C),
+                  fontSize: 12.5,
+                  height: 1.5,
+                ),
+              ),
+            ),
           ],
           const SizedBox(height: 14),
           AppSurfaceCard(
@@ -454,12 +475,18 @@ class ResultPage extends StatelessWidget {
             child: ListTile(
               onTap: () => _showGroupDetail(context, group),
               title: Text(group.displayName),
-              subtitle: Text('${group.instanceCount} 个区域 · 置信度 ${(group.averageConfidence * 100).toStringAsFixed(1)}%'),
+              subtitle: Text(_groupSubtitle(group)),
               trailing: Text('${group.totalCalories.toStringAsFixed(1)} 千卡'),
             ),
           );
         })
         .toList();
+  }
+
+  String _groupSubtitle(_FoodGroup group) {
+    final base =
+        '${group.instanceCount} 个区域 · 置信度 ${(group.averageConfidence * 100).toStringAsFixed(1)}%';
+    return group.isLowConfidence ? '$base · 待确认，不用于具体建议' : base;
   }
 
   String _groupKey(DetectedItem item) {
@@ -552,6 +579,16 @@ class ResultPage extends StatelessWidget {
                   Text('蛋白质：${group.totalProtein.toStringAsFixed(1)} g'),
                   Text('脂肪：${group.totalFat.toStringAsFixed(1)} g'),
                   Text('碳水：${group.totalCarbs.toStringAsFixed(1)} g'),
+                  if (group.isLowConfidence) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      '这个类别的平均置信度低于 65%，仅供核对，不用于点名建议。',
+                      style: TextStyle(
+                        color: Color(0xFF80552C),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   const Text('包含区域', style: TextStyle(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 8),
@@ -646,6 +683,7 @@ class _FoodGroup {
   double get averageConfidence => instances.isEmpty
       ? 0
       : instances.fold<double>(0, (sum, e) => sum + e.item.confidence) / instances.length;
+  bool get isLowConfidence => averageConfidence < ResultPage._adviceConfidenceThreshold;
   int get instanceCount => instances.length;
 }
 
@@ -1113,6 +1151,16 @@ class _InteractiveSegmentationCanvasState extends State<_InteractiveSegmentation
                       Text('蛋白质：${_selectedGroup!.group.totalProtein.toStringAsFixed(1)} g'),
                       Text('脂肪：${_selectedGroup!.group.totalFat.toStringAsFixed(1)} g'),
                       Text('碳水：${_selectedGroup!.group.totalCarbs.toStringAsFixed(1)} g'),
+                      if (_selectedGroup!.group.isLowConfidence) ...[
+                        const SizedBox(height: 6),
+                        const Text(
+                          '待确认类别，不用于具体饮食建议。',
+                          style: TextStyle(
+                            color: Color(0xFF80552C),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

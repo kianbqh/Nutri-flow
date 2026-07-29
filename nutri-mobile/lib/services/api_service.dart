@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/app_models.dart';
+import 'access_code_service.dart';
 import 'auth_service.dart';
 import 'profile_context_service.dart';
 
@@ -32,23 +33,30 @@ class ApiService {
       return 'http://10.0.2.2:18080/api/v1';
     }
 
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      return 'https://nutriflow.sunnxz.dev/api/v1';
+    }
+
     return 'http://127.0.0.1:18080/api/v1';
   }
 
-  static const _demoAccessCode = String.fromEnvironment(
-    'NUTRI_DEMO_ACCESS_CODE',
-    defaultValue: '',
-  );
-
-  final Dio _dio = Dio(BaseOptions(
+  late final Dio _dio = Dio(BaseOptions(
     baseUrl: baseUrl,
     connectTimeout: const Duration(seconds: 20),
     receiveTimeout: const Duration(seconds: 40),
-    headers: {
-      if (_demoAccessCode.isNotEmpty)
-        'X-Nutri-Access-Code': _demoAccessCode,
-    },
-  ));
+  ))
+    ..interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          await AccessCodeService.instance.ensureLoaded();
+          final code = AccessCodeService.instance.accessCode;
+          if (code.isNotEmpty) {
+            options.headers['X-Nutri-Access-Code'] = code;
+          }
+          handler.next(options);
+        },
+      ),
+    );
 
   static Map<String, dynamic> _asJsonMap(dynamic data) {
     if (data is Map<String, dynamic>) return data;
@@ -82,14 +90,24 @@ class ApiService {
 
       if (error.type == DioExceptionType.badResponse) {
         final code = error.response?.statusCode;
+        String? serverMessage;
+        try {
+          final body = _asJsonMap(error.response?.data);
+          serverMessage = body['error']?.toString().trim();
+        } catch (_) {
+          serverMessage = null;
+        }
         if (code == 401 || code == 403) {
           return '$prefix：当前请求无权限（$code）。';
         }
         if (code == 404) {
-          return '$prefix：当前功能暂时不可用，请稍后再试。';
+          return '$prefix：${serverMessage?.isNotEmpty == true ? serverMessage : '记录不存在或已失效'}。';
         }
         if (code != null && code >= 500) {
-          return '$prefix：服务端异常（$code），请稍后重试。';
+          return '$prefix：${serverMessage?.isNotEmpty == true ? serverMessage : '服务端异常（$code），请稍后重试'}。';
+        }
+        if (serverMessage?.isNotEmpty == true) {
+          return '$prefix：$serverMessage。';
         }
         return '$prefix：服务返回异常（${code ?? 'unknown'}）。';
       }
@@ -111,6 +129,20 @@ class ApiService {
       throw StateError('请先登录账号');
     }
     return userId;
+  }
+
+  Future<void> verifyAndSaveAccessCode(String accessCode) async {
+    final healthBaseUrl = baseUrl.replaceFirst(RegExp(r'/v1/?$'), '');
+    final probe = Dio(BaseOptions(
+      baseUrl: healthBaseUrl,
+      connectTimeout: const Duration(seconds: 20),
+      receiveTimeout: const Duration(seconds: 20),
+    ));
+    await probe.get(
+      '/actuator/health',
+      options: Options(headers: {'X-Nutri-Access-Code': accessCode.trim()}),
+    );
+    await AccessCodeService.instance.save(accessCode);
   }
 
   Future<AuthCodeDispatch> sendLoginCode(String phone) async {

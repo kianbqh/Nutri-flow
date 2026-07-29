@@ -106,7 +106,7 @@ class _ProfilePageState extends State<ProfilePage> {
     if (_weightKg != null) {
       parts.add('体重 ${_weightKg!.toStringAsFixed(1)} kg');
     }
-    if ((_gender ?? '').isNotEmpty) {
+    if (_gender == 'MALE' || _gender == 'FEMALE') {
       parts.add(_gender == 'MALE' ? '男' : '女');
     }
     return parts.isEmpty ? '还没有补充基础身体信息' : parts.join(' / ');
@@ -135,7 +135,8 @@ class _ProfilePageState extends State<ProfilePage> {
           ..addAll(profile.dietaryRestrictions);
         _heightCm = profile.heightCm;
         _weightKg = profile.weightKg;
-        _gender = profile.gender?.toUpperCase();
+        final gender = profile.gender?.toUpperCase();
+        _gender = gender == 'MALE' || gender == 'FEMALE' ? gender : null;
       });
     } catch (e) {
       setState(() => _error = ApiService.describeError(e, action: '加载个人主页'));
