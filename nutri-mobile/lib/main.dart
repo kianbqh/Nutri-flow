@@ -31,8 +31,11 @@ class NutriMobileApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFFE97A3A),
+      seedColor: const Color(0xFFC45F2A),
       brightness: Brightness.light,
+    ).copyWith(
+      primary: const Color(0xFFC45F2A),
+      secondary: const Color(0xFF718168),
     );
 
     return MaterialApp(
@@ -66,13 +69,13 @@ class NutriMobileApp extends StatelessWidget {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
-            borderSide: const BorderSide(color: Color(0xFFE97A3A), width: 1.4),
+            borderSide: const BorderSide(color: Color(0xFFC45F2A), width: 1.4),
           ),
         ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
             minimumSize: const Size.fromHeight(52),
-            backgroundColor: const Color(0xFF9B5B2E),
+            backgroundColor: const Color(0xFFC45F2A),
             foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
             textStyle: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700),

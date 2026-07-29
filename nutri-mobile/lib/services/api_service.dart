@@ -35,10 +35,19 @@ class ApiService {
     return 'http://127.0.0.1:18080/api/v1';
   }
 
+  static const _demoAccessCode = String.fromEnvironment(
+    'NUTRI_DEMO_ACCESS_CODE',
+    defaultValue: '',
+  );
+
   final Dio _dio = Dio(BaseOptions(
     baseUrl: baseUrl,
     connectTimeout: const Duration(seconds: 20),
     receiveTimeout: const Duration(seconds: 40),
+    headers: {
+      if (_demoAccessCode.isNotEmpty)
+        'X-Nutri-Access-Code': _demoAccessCode,
+    },
   ));
 
   static Map<String, dynamic> _asJsonMap(dynamic data) {

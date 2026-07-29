@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Nutri Mobile</string>
+	<string>NutriFlow</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>nutri_mobile</string>
+	<string>NutriFlow</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -26,6 +26,16 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>NutriFlow 使用相机拍摄餐食照片进行营养分析。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>NutriFlow 使用麦克风记录你的饮食目标语音输入。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>NutriFlow 访问相册以选择餐食照片进行营养分析。</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>NutriFlow 将语音转换为文字以填写饮食目标。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

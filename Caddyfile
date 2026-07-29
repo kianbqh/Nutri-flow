@@ -10,23 +10,69 @@
 		max_size 15MB
 	}
 
-	basic_auth {
-		{$NUTRI_BASIC_AUTH_USER} {$NUTRI_BASIC_AUTH_HASH}
-	}
+	route {
+		@unlock {
+			method POST
+			path /_access/unlock
+			header X-Nutri-Access-Code {$NUTRI_ACCESS_CODE}
+		}
+		handle @unlock {
+			header Set-Cookie "nutri_access={$NUTRI_ACCESS_SESSION}; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Strict"
+			respond 204
+		}
 
-	@api path /api/*
-	handle @api {
-		reverse_proxy business:8080 {
-			transport http {
-				response_header_timeout 360s
+		handle /_access/unlock {
+			header Content-Type application/json
+			respond `{"error":"INVALID_ACCESS_CODE"}` 401
+		}
+
+		handle /_access/logout {
+			header Set-Cookie "nutri_access=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict"
+			redir / 303
+		}
+
+		@apiWithCode {
+			path /api/*
+			header X-Nutri-Access-Code {$NUTRI_ACCESS_CODE}
+		}
+		handle @apiWithCode {
+			reverse_proxy business:8080 {
+				transport http {
+					response_header_timeout 360s
+				}
 			}
 		}
-	}
 
-	handle {
-		root * /srv
-		try_files {path} /index.html
-		file_server
+		@session header_regexp Cookie "nutri_access={$NUTRI_ACCESS_SESSION}"
+		@apiWithSession {
+			path /api/*
+			header_regexp Cookie "nutri_access={$NUTRI_ACCESS_SESSION}"
+		}
+		handle @apiWithSession {
+			reverse_proxy business:8080 {
+				transport http {
+					response_header_timeout 360s
+				}
+			}
+		}
+
+		@api path /api/*
+		handle @api {
+			header Content-Type application/json
+			respond `{"error":"ACCESS_CODE_REQUIRED"}` 401
+		}
+
+		handle @session {
+			root * /srv
+			try_files {path} /index.html
+			file_server
+		}
+
+		handle {
+			root * /access
+			try_files {path} /index.html
+			file_server
+		}
 	}
 
 	@assets path /assets/*

@@ -2,8 +2,8 @@
 
 This guide deploys Nutri-flow as a protected staging environment on one Ubuntu
 server. Caddy serves the Vue application, terminates HTTPS, and protects the
-site with HTTP Basic Authentication. All databases and internal services stay
-on the private Docker network.
+site with a single invitation code backed by a secure browser session cookie.
+All databases and internal services stay on the private Docker network.
 
 This profile is intended for invited testing. It is not a substitute for
 application-level JWT authentication.
@@ -67,24 +67,23 @@ openssl rand -hex 24
 openssl rand -hex 24
 ```
 
-Generate the Caddy Basic Auth password hash:
+Choose a long invitation code and generate an independent session secret:
 
 ```bash
-docker run --rm caddy:2-alpine \
-  caddy hash-password --plaintext 'CHOOSE_A_LONG_TEST_PASSWORD'
+openssl rand -hex 32
 ```
 
-Edit `.env.prod`. Put the bcrypt hash in single quotes because it contains
-dollar signs:
+Edit `.env.prod`:
 
 ```dotenv
-NUTRI_BASIC_AUTH_HASH='$2a$14$...'
+NUTRI_ACCESS_CODE=CHOOSE_A_LONG_INVITATION_CODE
+NUTRI_ACCESS_SESSION=PASTE_THE_RANDOM_HEX_VALUE
 ```
 
 Set `NUTRI_SITE_ADDRESS` to the real domain, set
 `NUTRI_CORS_ALLOWED_ORIGINS` to its `https://` origin, then configure the ACME
 email, generated passwords, and optional LLM API key. Keep
-`NUTRI_AUTH_EXPOSE_DEBUG_CODE=true` only while the Basic Auth gate is enabled
+`NUTRI_AUTH_EXPOSE_DEBUG_CODE=true` only while the invitation-code gate is enabled
 and the project has no real SMS provider.
 
 For a temporary IP-only HTTP deployment before DNS is ready, use:
@@ -133,16 +132,29 @@ and 443 are reachable.
 ## 7. Verify
 
 ```bash
-curl -u 'nutri-tester:YOUR_TEST_PASSWORD' \
+curl -H 'X-Nutri-Access-Code: YOUR_INVITATION_CODE' \
   https://nutri.example.com/api/actuator/health
 
 docker compose --env-file .env.prod -f compose.prod.yml logs \
   --tail=200 business agent inference gateway
 ```
 
-Open `https://nutri.example.com` in a browser, enter the Basic Auth credentials,
+Open `https://nutri.example.com` in a browser, enter the invitation code,
 log in with the protected staging OTP, upload a smoke image, and verify that the
 task reaches `COMPLETED`.
+
+For a temporary Flutter iOS or Android test build, pass the same staging code
+at build time:
+
+```bash
+flutter build ios --release \
+  --dart-define=NUTRI_API_BASE=https://nutri.example.com/api/v1 \
+  --dart-define=NUTRI_DEMO_ACCESS_CODE=YOUR_INVITATION_CODE
+```
+
+The compiled staging code is not suitable for a public App Store release.
+Replace the scaffold user ID flow with real token-based authentication before
+removing the outer gate or distributing a public build.
 
 ## 8. Update and roll back
 
@@ -178,7 +190,7 @@ deletion is intended.
 
 ## 10. Before removing the staging gate
 
-Complete all of the following before removing Caddy Basic Auth:
+Complete all of the following before removing the Caddy invitation-code gate:
 
 - Replace header-based identity with signed JWT access and refresh tokens.
 - Connect a real SMS or email verification provider and disable debug OTPs.
@@ -187,5 +199,6 @@ Complete all of the following before removing Caddy Basic Auth:
 - Pin and test database, object-store, and Chroma image versions.
 - Add monitoring, off-server backups, and alerting.
 
-The iOS app should target the same HTTPS API, but external TestFlight testing
-should wait until application-level authentication replaces the staging gate.
+Internal TestFlight builds may use the temporary compiled staging code.
+External TestFlight testing and App Store distribution should wait until
+application-level authentication replaces the staging gate.

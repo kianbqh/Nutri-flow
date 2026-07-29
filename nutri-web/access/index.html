@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>NutriFlow 访问授权</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        color: #322a24;
+        background: #f6efe4;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-width: 320px;
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: #f6efe4;
+      }
+
+      main {
+        width: min(100%, 420px);
+        padding: 32px;
+        border: 1px solid #dfcdbb;
+        border-radius: 8px;
+        background: #fffdf9;
+        box-shadow: 0 16px 48px rgb(86 48 26 / 12%);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 28px;
+      }
+
+      .mark {
+        width: 44px;
+        height: 44px;
+        border-radius: 8px;
+        object-fit: cover;
+      }
+
+      .name {
+        font-size: 20px;
+        font-weight: 750;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 26px;
+        line-height: 1.25;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0 0 24px;
+        color: #75685f;
+        line-height: 1.65;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 14px;
+        font-weight: 650;
+      }
+
+      input {
+        width: 100%;
+        height: 48px;
+        padding: 0 14px;
+        border: 1px solid #cbb8a6;
+        border-radius: 6px;
+        color: #322a24;
+        background: #ffffff;
+        font: inherit;
+        letter-spacing: 0;
+        outline: none;
+      }
+
+      input:focus {
+        border-color: #c45f2a;
+        box-shadow: 0 0 0 3px rgb(196 95 42 / 14%);
+      }
+
+      button {
+        width: 100%;
+        height: 48px;
+        margin-top: 14px;
+        border: 0;
+        border-radius: 6px;
+        color: #ffffff;
+        background: #c45f2a;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: #a94d20;
+      }
+
+      button:disabled {
+        cursor: wait;
+        opacity: 0.7;
+      }
+
+      #message {
+        min-height: 22px;
+        margin: 12px 0 0;
+        color: #b42318;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="brand">
+        <img class="mark" src="/nutriflow-mark.png" alt="" aria-hidden="true" />
+        <div class="name">NutriFlow</div>
+      </div>
+      <h1>访问授权</h1>
+      <p>请输入测试邀请中提供的授权码。</p>
+      <form id="access-form">
+        <label for="access-code">授权码</label>
+        <input
+          id="access-code"
+          name="access-code"
+          type="password"
+          autocomplete="current-password"
+          required
+          autofocus
+        />
+        <button type="submit">进入 NutriFlow</button>
+        <p id="message" role="alert" aria-live="polite"></p>
+      </form>
+    </main>
+    <script>
+      const form = document.querySelector("#access-form");
+      const input = document.querySelector("#access-code");
+      const button = form.querySelector("button");
+      const message = document.querySelector("#message");
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const code = input.value.trim();
+        if (!code) return;
+
+        button.disabled = true;
+        message.textContent = "";
+
+        try {
+          const response = await fetch("/_access/unlock", {
+            method: "POST",
+            headers: { "X-Nutri-Access-Code": code },
+          });
+
+          if (!response.ok) {
+            throw new Error("invalid");
+          }
+
+          window.location.replace("/");
+        } catch {
+          message.textContent = "授权码无效，请检查后重试。";
+          input.select();
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
