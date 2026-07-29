@@ -105,6 +105,26 @@ export const FOOD_LABEL_ZH = {
   'other ingredients': '其他配料',
 }
 
+export const FOODSEG103_CLASS_NAMES = [
+  'background', 'candy', 'egg tart', 'french fries', 'chocolate', 'biscuit',
+  'popcorn', 'pudding', 'ice cream', 'cheese butter', 'cake', 'wine',
+  'milkshake', 'coffee', 'juice', 'milk', 'tea', 'almond', 'red beans',
+  'cashew', 'dried cranberries', 'soy', 'walnut', 'peanut', 'egg', 'apple',
+  'date', 'apricot', 'avocado', 'banana', 'strawberry', 'cherry', 'blueberry',
+  'raspberry', 'mango', 'olives', 'peach', 'lemon', 'pear', 'fig',
+  'pineapple', 'grape', 'kiwi', 'melon', 'orange', 'watermelon', 'steak',
+  'pork', 'chicken duck', 'sausage', 'fried meat', 'lamb', 'sauce', 'crab',
+  'fish', 'shellfish', 'shrimp', 'soup', 'bread', 'corn', 'hamburg', 'pizza',
+  'hanamaki baozi', 'wonton dumplings', 'pasta', 'noodles', 'rice', 'pie',
+  'tofu', 'eggplant', 'potato', 'garlic', 'cauliflower', 'tomato', 'kelp',
+  'seaweed', 'spring onion', 'rape', 'ginger', 'okra', 'lettuce', 'pumpkin',
+  'cucumber', 'white radish', 'carrot', 'asparagus', 'bamboo shoots',
+  'broccoli', 'celery stick', 'cilantro mint', 'snow peas', 'cabbage',
+  'bean sprouts', 'onion', 'pepper', 'green beans', 'french beans',
+  'king oyster mushroom', 'shiitake', 'enoki mushroom', 'oyster mushroom',
+  'white button mushroom', 'salad', 'other ingredients',
+]
+
 export function looksChinese(text) {
   return /[\u4e00-\u9fff]/.test((text || '').toString())
 }
@@ -139,6 +159,12 @@ export function resolveFoodLabel(item) {
     if (looksChinese(normalized)) {
       return normalized
     }
+  }
+
+  const classId = Number(item?.class_id ?? item?.classId)
+  const className = Number.isInteger(classId) ? FOODSEG103_CLASS_NAMES[classId] : ''
+  if (className) {
+    return FOOD_LABEL_ZH[className] || className
   }
 
   return '未知食物'

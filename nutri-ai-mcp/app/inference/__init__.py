@@ -209,13 +209,7 @@ class NutriSegModel(nn.Module):
 _model: NutriSegModel | None = None
 _model_version: str = "swin-t-bifpn-ca-v1-random-init"
 
-try:
-    from app.training.build_stage6_c1_mapping import FOODSEG103_CLASSES, infer_profile
-except Exception:
-    FOODSEG103_CLASSES = {0: "background"}
-
-    def infer_profile(class_name: str) -> tuple[float, float, str, str]:
-        return (0.0, 0.0, "background", "high") if class_name == "background" else (120.0, 100.0, "mixed", "low")
+from app.foodseg103_taxonomy import FOODSEG103_CLASSES, infer_profile
 
 
 def _load_class_priors() -> dict[int, dict[str, float | str]]:
