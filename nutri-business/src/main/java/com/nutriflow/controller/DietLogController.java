@@ -170,10 +170,9 @@ public class DietLogController {
                 })
                 .orElseGet(() -> {
                     Map<String, Object> resp = new LinkedHashMap<>();
+                    resp.put("error", "分析记录不存在或已失效");
                     resp.put("taskId", taskId);
-                    resp.put("status", "PENDING");
-                    resp.put("analysisResult", null);
-                    return ResponseEntity.ok(resp);
+                    return ResponseEntity.status(404).body(resp);
                 });
     }
 

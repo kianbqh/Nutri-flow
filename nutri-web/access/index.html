@@ -138,7 +138,7 @@
           id="access-code"
           name="access-code"
           type="password"
-          autocomplete="current-password"
+          autocomplete="one-time-code"
           required
           autofocus
         />
@@ -151,6 +151,7 @@
       const input = document.querySelector("#access-code");
       const button = form.querySelector("button");
       const message = document.querySelector("#message");
+      const buttonLabel = button.textContent;
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -158,6 +159,7 @@
         if (!code) return;
 
         button.disabled = true;
+        button.textContent = "正在验证…";
         message.textContent = "";
 
         try {
@@ -188,6 +190,7 @@
               : "授权状态未能保存，请稍后重试。";
           input.select();
           button.disabled = false;
+          button.textContent = buttonLabel;
         }
       });
     </script>

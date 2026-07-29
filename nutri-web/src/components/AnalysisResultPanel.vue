@@ -71,6 +71,7 @@
                 <div class="food-name-cell">
                   <strong>{{ group.displayLabel }}</strong>
                   <small>{{ group.instanceCount }} 个区域</small>
+                  <small v-if="group.isLowConfidence" class="confidence-warning">待确认，不用于具体建议</small>
                 </div>
               </td>
               <td>{{ (group.averageConfidence * 100).toFixed(1) }}%</td>
@@ -86,6 +87,9 @@
           </tfoot>
         </table>
       </div>
+      <p v-if="hasLowConfidenceItems" class="confidence-note">
+        低于 65% 的类别仅作为待确认线索，不用于生成点名食物的具体建议。
+      </p>
     </section>
 
     <section class="surface-card advice-stage">
@@ -169,6 +173,7 @@ const groupedDetectedItems = computed(() => {
     .map(group => ({
       ...group,
       averageConfidence: group.instanceCount ? group.confidenceSum / group.instanceCount : 0,
+      isLowConfidence: group.instanceCount ? group.confidenceSum / group.instanceCount < 0.65 : true,
     }))
     .sort((left, right) => {
       const calorieCompare = right.totalCalories - left.totalCalories
@@ -178,6 +183,7 @@ const groupedDetectedItems = computed(() => {
       return right.averageConfidence - left.averageConfidence
     })
 })
+const hasLowConfidenceItems = computed(() => groupedDetectedItems.value.some(group => group.isLowConfidence))
 const adviceSections = computed(() => splitAdvice(props.adviceReport || ''))
 
 function splitAdvice(report) {
@@ -222,6 +228,8 @@ function formatMetric(value) {
 .results-stack {
   display: grid;
   gap: 14px;
+  width: 100%;
+  min-width: 0;
 }
 
 .result-hero-card,
@@ -229,6 +237,7 @@ function formatMetric(value) {
 .result-actions {
   display: grid;
   gap: 14px;
+  min-width: 0;
 }
 
 .result-hero-card {
@@ -237,6 +246,7 @@ function formatMetric(value) {
 }
 
 .result-hero-media {
+  min-width: 0;
   border-radius: 24px;
   background: #121318;
   border: 1px solid rgba(234, 215, 202, 0.95);
@@ -271,6 +281,7 @@ function formatMetric(value) {
 .result-hero-body {
   display: grid;
   gap: 18px;
+  min-width: 0;
 }
 
 .result-hero-title-row {
@@ -368,7 +379,11 @@ function formatMetric(value) {
 }
 
 .table-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
 }
 
 .result-table {
@@ -451,5 +466,27 @@ function formatMetric(value) {
   .result-hero-title-row {
     flex-direction: column;
   }
+
+  .result-hero-media {
+    min-height: 220px;
+    padding: 10px;
+  }
+
+  .result-summary-card,
+  .advice-basis,
+  .advice-main {
+    border-radius: 16px;
+  }
+}
+
+.food-name-cell .confidence-warning {
+  color: var(--warning);
+  font-weight: 700;
+}
+
+.confidence-note {
+  margin-top: 12px;
+  color: var(--warning);
+  line-height: 1.65;
 }
 </style>

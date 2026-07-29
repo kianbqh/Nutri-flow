@@ -39,6 +39,7 @@ class McpSettings(BaseSettings):
         / "nutri-ai-mcp/weights_by_category/foodseg103/stage7s1/stage7s1_tiny_img512_mask135_cls095_phaseA_12ep/best_stage7s1_tiny_img512_mask135_cls095_phaseA_12ep.pth"
     )
     mcp_input_size: str = "512"
+    advice_min_confidence: float = 0.65
 
     class Config:
         env_prefix = "NUTRI_"
@@ -347,7 +348,12 @@ async def call_mcp_segmentation(state: "AgentState") -> dict:
     segmentation_result["detected_items"] = grouped_items
 
     labels: list[str] = []
+    uncertain_count = 0
     for item in detected_instances:
+        confidence = _as_float(item.get("confidence") or item.get("confidence_score"), 0.0)
+        if confidence < float(_settings.advice_min_confidence):
+            uncertain_count += 1
+            continue
         label = (
             item.get("label")
             or item.get("class_name")
@@ -360,11 +366,15 @@ async def call_mcp_segmentation(state: "AgentState") -> dict:
     workflow_mode = "FULL" if labels else "CALORIE_ONLY"
     if labels:
         workflow_trace.append(
-            f"call_mcp_segmentation: 已识别 {len(labels)} 个类别，进入完整分析流程"
+            f"call_mcp_segmentation: {len(labels)} 个可靠类别进入完整分析流程"
         )
     else:
         workflow_trace.append(
             "call_mcp_segmentation: 未识别到有效类别或分割失败，切换到仅热量估算流程"
+        )
+    if uncertain_count:
+        workflow_trace.append(
+            f"call_mcp_segmentation: {uncertain_count} 个低可信区域未用于类别建议"
         )
 
     return {

@@ -58,4 +58,20 @@ class GoalAssistantServiceTest {
         assertThat(result.activityLevel()).isEqualTo("LOW");
         assertThat(result.dailyCalorieTarget()).isBetween(1200, 2200);
     }
+
+    @Test
+    void mapsFrequentTrainingAndBloodSugarConcern() {
+        GoalParseResult result = service.parse(new GoalParseInput(
+                "最近血糖有点高，每周做5次力量训练，想健康一点",
+                null,
+                null,
+                null,
+                null,
+                null
+        ));
+
+        assertThat(result.activityLevel()).isEqualTo("HIGH");
+        assertThat(result.dietaryRestrictions()).contains("high_sugar");
+        assertThat(result.healthGoal()).isEqualTo("GENERAL_HEALTH");
+    }
 }

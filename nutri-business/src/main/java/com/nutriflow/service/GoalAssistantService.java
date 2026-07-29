@@ -110,6 +110,8 @@ public class GoalAssistantService {
                 dietaryRestrictions: 数组，只能包含 high_sugar, spicy, dairy, lactose, gluten, seafood, nuts；
                 summary: 80 字以内中文总结。
                 明确的原文信息优先于当前资料。没有明确健康目标时使用 GENERAL_HEALTH。
+                每周 5 次及以上规律训练视为 HIGH，2-4 次视为 MEDIUM，0-1 次视为 LOW。
+                提到血糖偏高、控制血糖或少吃甜食时，dietaryRestrictions 应包含 high_sugar。
                 """;
 
         Map<String, Object> context = new LinkedHashMap<>();
@@ -283,8 +285,9 @@ public class GoalAssistantService {
             };
         }
 
-        boolean male = "MALE".equals(normalize(input.gender()));
-        double bmr = 10 * input.weightKg() + 6.25 * input.heightCm() - 5 * input.age() + (male ? 5 : -161);
+        String gender = normalize(input.gender());
+        double genderOffset = "MALE".equals(gender) ? 5 : "FEMALE".equals(gender) ? -161 : -78;
+        double bmr = 10 * input.weightKg() + 6.25 * input.heightCm() - 5 * input.age() + genderOffset;
         double factor = switch (normalize(input.activityLevel())) {
             case "LOW" -> 1.3;
             case "HIGH" -> 1.65;
@@ -309,7 +312,7 @@ public class GoalAssistantService {
         if (matcher.find()) {
             int count = Integer.parseInt(matcher.group(1));
             if (count <= 1) return "LOW";
-            if (count >= 6) return "HIGH";
+            if (count >= 5) return "HIGH";
             return "MEDIUM";
         }
         if (containsAny(text, "规律运动", "适量运动", "活动量中")) {
@@ -324,6 +327,7 @@ public class GoalAssistantService {
                 Map.entry("控糖", "high_sugar"),
                 Map.entry("少糖", "high_sugar"),
                 Map.entry("甜食", "high_sugar"),
+                Map.entry("血糖", "high_sugar"),
                 Map.entry("少辣", "spicy"),
                 Map.entry("不吃辣", "spicy"),
                 Map.entry("乳糖", "lactose"),

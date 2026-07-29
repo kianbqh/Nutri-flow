@@ -153,6 +153,8 @@ textarea:focus {
 }
 
 .app-shell {
+  width: 100%;
+  min-width: 0;
   max-width: 1240px;
   margin: 0 auto;
 }
@@ -282,12 +284,14 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  min-width: 0;
 }
 
 .page {
   display: flex;
   flex-direction: column;
   gap: 22px;
+  min-width: 0;
 }
 
 .page-hero {
@@ -299,6 +303,7 @@ textarea:focus {
   border: 1px solid rgba(234, 215, 202, 0.9);
   background: linear-gradient(135deg, rgba(255, 246, 237, 0.96), rgba(255, 255, 255, 0.88) 62%, rgba(246, 229, 214, 0.92));
   box-shadow: var(--shadow);
+  min-width: 0;
 }
 
 .page-hero__copy {
@@ -344,6 +349,7 @@ textarea:focus {
 }
 
 .surface-card {
+  min-width: 0;
   padding: 24px;
   border-radius: 28px;
   background: var(--surface-strong);
@@ -526,7 +532,17 @@ textarea:focus {
 
 @media (max-width: 560px) {
   .shell-nav {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .shell-nav__link {
+    min-height: 58px;
+    padding: 10px 8px;
+    text-align: center;
+  }
+
+  .shell-nav__hint {
+    display: none;
   }
 
   .page-actions {
@@ -535,6 +551,10 @@ textarea:focus {
 
   .button {
     width: 100%;
+  }
+
+  .surface-card {
+    padding: 18px;
   }
 }
 </style>
