@@ -3,7 +3,7 @@
 	admin off
 }
 
-{$NUTRI_DOMAIN} {
+{$NUTRI_SITE_ADDRESS} {
 	encode zstd gzip
 
 	request_body {

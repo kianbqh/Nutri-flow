@@ -81,9 +81,20 @@ dollar signs:
 NUTRI_BASIC_AUTH_HASH='$2a$14$...'
 ```
 
-Set the real domain, ACME email, generated passwords, and optional LLM API key.
-Keep `NUTRI_AUTH_EXPOSE_DEBUG_CODE=true` only while the Basic Auth gate is
-enabled and the project has no real SMS provider.
+Set `NUTRI_SITE_ADDRESS` to the real domain, set
+`NUTRI_CORS_ALLOWED_ORIGINS` to its `https://` origin, then configure the ACME
+email, generated passwords, and optional LLM API key. Keep
+`NUTRI_AUTH_EXPOSE_DEBUG_CODE=true` only while the Basic Auth gate is enabled
+and the project has no real SMS provider.
+
+For a temporary IP-only HTTP deployment before DNS is ready, use:
+
+```dotenv
+NUTRI_SITE_ADDRESS=http://SERVER_IP
+NUTRI_CORS_ALLOWED_ORIGINS=http://SERVER_IP
+```
+
+Switch both values to the HTTPS domain as soon as DNS is available.
 
 ## 5. Upload the model checkpoint
 
