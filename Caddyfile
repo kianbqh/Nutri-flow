@@ -18,7 +18,9 @@
 		}
 		handle @unlock {
 			header Set-Cookie "nutri_access={$NUTRI_ACCESS_SESSION}; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Strict"
-			respond 204
+			header Cache-Control "no-store"
+			header Content-Type application/json
+			respond `{"ok":true}` 200
 		}
 
 		handle /_access/unlock {
@@ -69,6 +71,7 @@
 		}
 
 		handle {
+			header Cache-Control "no-store"
 			root * /access
 			try_files {path} /index.html
 			file_server
@@ -82,7 +85,7 @@
 		Referrer-Policy "strict-origin-when-cross-origin"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
-		Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+		Permissions-Policy "camera=(self), microphone=(self), geolocation=()"
 		Strict-Transport-Security "max-age=31536000"
 	}
 

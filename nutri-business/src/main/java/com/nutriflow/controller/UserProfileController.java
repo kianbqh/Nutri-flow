@@ -4,6 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nutriflow.model.User;
 import com.nutriflow.repository.UserRepository;
+import com.nutriflow.service.GoalAssistantService;
+import com.nutriflow.service.GoalAssistantService.GoalParseInput;
+import com.nutriflow.service.GoalAssistantService.GoalParseResult;
 import com.nutriflow.service.UserNicknameService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -17,10 +20,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Locale;
 
 @RestController
 @RequestMapping("/v1/users")
@@ -34,6 +35,7 @@ public class UserProfileController {
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
     private final UserNicknameService userNicknameService;
+    private final GoalAssistantService goalAssistantService;
 
     @GetMapping("/{userId}/profile")
     public ResponseEntity<?> getProfile(@PathVariable Long userId) {
@@ -70,114 +72,42 @@ public class UserProfileController {
     public ResponseEntity<?> parseGoalByAssistant(@PathVariable Long userId, @Valid @RequestBody GoalAssistantRequest req) {
         return userRepository.findById(userId)
                 .<ResponseEntity<?>>map(user -> {
-                    GoalAssistantResponse parsed = parseGoalText(req);
+                    GoalParseResult parsed = goalAssistantService.parse(new GoalParseInput(
+                            req.getRawText(),
+                            req.getAge(),
+                            req.getHeightCm(),
+                            req.getWeightKg(),
+                            req.getGender(),
+                            req.getActivityLevel()
+                    ));
                     if (req.getApplyToProfile() != null && req.getApplyToProfile()) {
-                        user.setHealthGoal(parsed.getHealthGoal());
-                        user.setDailyCalorieTarget(parsed.getDailyCalorieTarget());
-                        user.setDietaryRestrictions(toJson(parsed.getDietaryRestrictions()));
-                        if (req.getHeightCm() != null) {
-                            user.setHeightCm(req.getHeightCm());
+                        user.setHealthGoal(parsed.healthGoal());
+                        user.setDailyCalorieTarget(parsed.dailyCalorieTarget());
+                        user.setDietaryRestrictions(toJson(parsed.dietaryRestrictions()));
+                        if (parsed.heightCm() != null) {
+                            user.setHeightCm(parsed.heightCm());
                         }
-                        if (req.getWeightKg() != null) {
-                            user.setWeightKg(req.getWeightKg());
+                        if (parsed.weightKg() != null) {
+                            user.setWeightKg(parsed.weightKg());
                         }
-                        if (req.getGender() != null && !req.getGender().isBlank()) {
-                            user.setGender(req.getGender().toUpperCase(Locale.ROOT));
+                        if (parsed.gender() != null && !parsed.gender().isBlank()) {
+                            user.setGender(parsed.gender());
                         }
                         userRepository.save(user);
                     }
-                    return ResponseEntity.ok(parsed);
+                    return ResponseEntity.ok(new GoalAssistantResponse(
+                            parsed.healthGoal(),
+                            parsed.dailyCalorieTarget(),
+                            parsed.dietaryRestrictions(),
+                            parsed.summary(),
+                            parsed.age(),
+                            parsed.heightCm(),
+                            parsed.weightKg(),
+                            parsed.gender(),
+                            parsed.activityLevel()
+                    ));
                 })
                 .orElseGet(() -> ResponseEntity.status(404).body(Map.of("error", "User not found")));
-    }
-
-    private GoalAssistantResponse parseGoalText(GoalAssistantRequest req) {
-        String text = req.getRawText() == null ? "" : req.getRawText().toLowerCase(Locale.ROOT);
-
-        String healthGoal = "GENERAL_HEALTH";
-        if (containsAny(text, "减脂", "减肥", "瘦", "weight loss", "fat loss")) {
-            healthGoal = "WEIGHT_LOSS";
-        } else if (containsAny(text, "增肌", "增重", "muscle", "bulk")) {
-            healthGoal = "MUSCLE_GAIN";
-        } else if (containsAny(text, "维持", "保持", "maintenance")) {
-            healthGoal = "MAINTENANCE";
-        }
-
-        List<String> restrictions = new ArrayList<>();
-        Map<String, String> restrictionMap = new HashMap<>();
-        restrictionMap.put("乳糖", "lactose");
-        restrictionMap.put("牛奶", "dairy");
-        restrictionMap.put("海鲜", "seafood");
-        restrictionMap.put("花生", "peanut");
-        restrictionMap.put("坚果", "nuts");
-        restrictionMap.put("麸质", "gluten");
-        restrictionMap.put("辣", "spicy");
-        restrictionMap.put("甜", "high_sugar");
-        restrictionMap.put("油", "high_fat");
-        restrictionMap.forEach((k, v) -> {
-            if (text.contains(k) && !restrictions.contains(v)) {
-                restrictions.add(v);
-            }
-        });
-
-        Integer kcal = estimateCalorieTarget(req, healthGoal);
-
-        String summary = switch (healthGoal) {
-            case "WEIGHT_LOSS" -> "识别到你的目标偏向减脂，建议先控制总热量和高糖高油食物。";
-            case "MUSCLE_GAIN" -> "识别到你的目标偏向增肌，建议保证优质蛋白和规律训练。";
-            case "MAINTENANCE" -> "识别到你的目标偏向体重维持，建议保持规律饮食。";
-            default -> "识别到你的目标偏向综合健康，建议饮食均衡并适度运动。";
-        };
-
-        return new GoalAssistantResponse(healthGoal, kcal, restrictions, summary);
-    }
-
-    private Integer estimateCalorieTarget(GoalAssistantRequest req, String goal) {
-        if (req.getDailyCalorieTarget() != null) {
-            return req.getDailyCalorieTarget();
-        }
-
-        if (req.getWeightKg() == null || req.getHeightCm() == null || req.getAge() == null) {
-            return switch (goal) {
-                case "WEIGHT_LOSS" -> 1800;
-                case "MUSCLE_GAIN" -> 2400;
-                case "MAINTENANCE" -> 2100;
-                default -> 2000;
-            };
-        }
-
-        double bmr;
-        String gender = req.getGender() == null ? "OTHER" : req.getGender().toUpperCase(Locale.ROOT);
-        if ("MALE".equals(gender)) {
-            bmr = 10 * req.getWeightKg() + 6.25 * req.getHeightCm() - 5 * req.getAge() + 5;
-        } else {
-            bmr = 10 * req.getWeightKg() + 6.25 * req.getHeightCm() - 5 * req.getAge() - 161;
-        }
-
-        double activityFactor = switch (req.getActivityLevel() == null ? "MEDIUM" : req.getActivityLevel().toUpperCase(Locale.ROOT)) {
-            case "LOW" -> 1.3;
-            case "HIGH" -> 1.65;
-            default -> 1.5;
-        };
-
-        double tdee = bmr * activityFactor;
-        double target = switch (goal) {
-            case "WEIGHT_LOSS" -> tdee - 350;
-            case "MUSCLE_GAIN" -> tdee + 250;
-            case "MAINTENANCE" -> tdee;
-            default -> tdee;
-        };
-
-        return (int) Math.max(1200, Math.min(3200, Math.round(target)));
-    }
-
-    private boolean containsAny(String text, String... keys) {
-        for (String key : keys) {
-            if (text.contains(key)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private ProfileResponse toProfileResponse(User user) {
@@ -276,5 +206,10 @@ public class UserProfileController {
         private Integer dailyCalorieTarget;
         private List<String> dietaryRestrictions;
         private String summary;
+        private Integer age;
+        private Integer heightCm;
+        private Double weightKg;
+        private String gender;
+        private String activityLevel;
     }
 }

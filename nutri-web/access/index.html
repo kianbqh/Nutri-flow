@@ -164,15 +164,28 @@
           const response = await fetch("/_access/unlock", {
             method: "POST",
             headers: { "X-Nutri-Access-Code": code },
+            credentials: "same-origin",
+            cache: "no-store",
           });
 
           if (!response.ok) {
             throw new Error("invalid");
           }
 
+          const sessionProbe = await fetch("/api/actuator/health", {
+            credentials: "same-origin",
+            cache: "no-store",
+          });
+          if (!sessionProbe.ok) {
+            throw new Error("session");
+          }
+
           window.location.replace("/");
-        } catch {
-          message.textContent = "授权码无效，请检查后重试。";
+        } catch (error) {
+          message.textContent =
+            error.message === "invalid"
+              ? "授权码无效，请检查后重试。"
+              : "授权状态未能保存，请稍后重试。";
           input.select();
           button.disabled = false;
         }

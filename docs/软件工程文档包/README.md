@@ -26,6 +26,7 @@ release baseline.
 17. `17_端到端性能与稳定性验证报告.md` - E2E validation report
 18. `18_模型版本基线与默认发布说明.md` - released model baseline
 19. `19_毕业论文写作素材提炼.md` - thesis writing material
+20. `20_公网用户视角验收测试报告.md` - public-site user acceptance findings
 
 ## Reading Path
 

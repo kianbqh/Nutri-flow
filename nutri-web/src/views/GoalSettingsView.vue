@@ -287,6 +287,7 @@ const restrictionOptions = [
 ]
 
 let speechRecognition = null
+let speechInputBeforeStart = ''
 
 const hasSession = computed(() => Boolean(currentUserId.value && currentPhone.value))
 const pageBusy = computed(() => loading.value || saving.value || assistantBusy.value)
@@ -388,15 +389,26 @@ function setupSpeechRecognition() {
   speechRecognition.lang = 'zh-CN'
   speechRecognition.interimResults = true
   speechRecognition.continuous = false
+  speechRecognition.onstart = () => {
+    listening.value = true
+  }
   speechRecognition.onresult = event => {
-    assistantForm.rawText = Array.from(event.results)
+    const transcript = Array.from(event.results)
       .map(result => result[0]?.transcript || '')
       .join('')
       .trim()
+    assistantForm.rawText = [speechInputBeforeStart, transcript].filter(Boolean).join(' ').trim()
   }
-  speechRecognition.onerror = () => {
+  speechRecognition.onerror = event => {
     listening.value = false
-    assistantError.value = '当前浏览器暂时无法使用语音输入，请改用手动输入。'
+    const messages = {
+      'not-allowed': '麦克风权限未开启，请在浏览器的网站权限中允许麦克风。',
+      'service-not-allowed': '浏览器的语音识别服务当前不可用，请稍后重试。',
+      'audio-capture': '没有检测到可用麦克风，请检查设备后重试。',
+      network: '语音识别服务连接失败，请检查网络后重试。',
+      'no-speech': '没有听到清晰语音，请靠近麦克风后重试。',
+    }
+    assistantError.value = messages[event.error] || '语音输入未能完成，请稍后重试。'
   }
   speechRecognition.onend = () => {
     listening.value = false
@@ -543,6 +555,11 @@ async function useAssistant(apply) {
     form.healthGoal = (parsed.healthGoal || form.healthGoal).toString()
     form.dailyCalorieTarget = Number(parsed.dailyCalorieTarget ?? form.dailyCalorieTarget)
     selectedRestrictions.value = normalizeRestrictionList(parsed.dietaryRestrictions)
+    if (parsed.age !== null && parsed.age !== undefined) form.age = String(parsed.age)
+    if (parsed.heightCm !== null && parsed.heightCm !== undefined) form.heightCm = String(parsed.heightCm)
+    if (parsed.weightKg !== null && parsed.weightKg !== undefined) form.weightKg = String(parsed.weightKg)
+    if (['MALE', 'FEMALE'].includes(parsed.gender)) form.gender = parsed.gender
+    if (['LOW', 'MEDIUM', 'HIGH'].includes(parsed.activityLevel)) form.activityLevel = parsed.activityLevel
     assistantSummary.value = (parsed.summary || '').toString()
     assistantMessage.value = apply ? '已应用到当前目标，你也可以继续微调后再保存。' : '建议已经生成，你可以先看看再决定是否采用。'
 
@@ -570,8 +587,13 @@ function toggleSpeech() {
     return
   }
 
-  speechRecognition.start()
-  listening.value = true
+  speechInputBeforeStart = assistantForm.rawText.trim()
+  try {
+    speechRecognition.start()
+  } catch {
+    listening.value = false
+    assistantError.value = '语音输入尚未就绪，请稍后重试。'
+  }
 }
 </script>
 
