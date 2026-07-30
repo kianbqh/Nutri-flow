@@ -126,7 +126,16 @@ G:\GraduationProj_Nutri-flow\Nutri-flow\.runtime\dashboard-admin-key.txt
 - 14 天新增用户和分析趋势
 - 健康目标分布、餐次分布
 
-管理接口为 `GET /api/v1/admin/dashboard`，请求头为 `X-Nutri-Admin-Key`。它不返回用户明细或手机号。
+看板还提供受保护的数据库记录板块：
+
+- `users`：用户 ID、完整手机号、昵称、健康目标、每日热量目标、身高体重、性别、分析次数和注册时间
+- `diet_logs`：记录 ID、用户 ID、完整手机号、任务 ID、餐次、状态、识别食物、总热量、建议生成状态和记录时间
+- 两张表均使用服务端分页，单页默认 10 条
+- 不返回密码哈希、验证码、邮箱、用户名、原始分析 JSON 或图片对象存储地址
+
+聚合接口为 `GET /api/v1/admin/dashboard`，记录接口为
+`GET /api/v1/admin/dashboard/records?table=users&page=0&size=10`。两者都要求
+`X-Nutri-Admin-Key` 请求头并设置 `Cache-Control: no-store`。
 
 ## 4. 备份
 

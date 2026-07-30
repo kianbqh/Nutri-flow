@@ -223,3 +223,13 @@ export async function getAdminDashboard(adminKey) {
   })
   return data
 }
+
+export async function getAdminRecords(adminKey, table, page = 0, size = 10) {
+  const { data } = await api.get('/admin/dashboard/records', {
+    params: { table, page, size },
+    headers: {
+      'X-Nutri-Admin-Key': adminKey,
+    },
+  })
+  return data
+}

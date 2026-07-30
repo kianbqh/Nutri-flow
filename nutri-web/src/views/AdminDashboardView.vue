@@ -123,19 +123,161 @@
           </article>
         </div>
       </section>
+
+      <section class="records-panel">
+        <header class="records-header">
+          <div>
+            <span class="section-kicker">生产数据库</span>
+            <h3>数据库记录</h3>
+            <p>只读分页查询，敏感字段不会写入浏览器持久存储。</p>
+          </div>
+          <div class="record-tabs" role="tablist" aria-label="数据库表">
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="recordsTable === 'users'"
+              :class="{ active: recordsTable === 'users' }"
+              @click="selectRecordsTable('users')"
+            >
+              用户表
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="recordsTable === 'diet_logs'"
+              :class="{ active: recordsTable === 'diet_logs' }"
+              @click="selectRecordsTable('diet_logs')"
+            >
+              餐食记录
+            </button>
+          </div>
+        </header>
+
+        <div class="records-status">
+          <span>{{ recordsTable === 'users' ? 'users' : 'diet_logs' }}</span>
+          <strong>{{ records?.totalElements ?? 0 }} 条记录</strong>
+          <button type="button" class="secondary-button compact-button" :disabled="recordsLoading" @click="loadRecords">
+            {{ recordsLoading ? '读取中…' : '重新读取' }}
+          </button>
+        </div>
+
+        <p v-if="recordsError" class="error-text records-error">{{ recordsError }}</p>
+
+        <div v-if="recordsLoading && !records" class="records-empty">正在读取数据库记录…</div>
+
+        <div v-else-if="recordsTable === 'users'" class="table-scroll">
+          <table class="records-table users-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>手机号</th>
+                <th>昵称</th>
+                <th>健康目标</th>
+                <th>每日目标</th>
+                <th>身体资料</th>
+                <th>性别</th>
+                <th>分析数</th>
+                <th>注册时间</th>
+                <th>最近分析</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in records?.content || []" :key="item.id">
+                <td class="mono-cell">{{ item.id }}</td>
+                <td class="phone-cell">{{ item.phone || '未填写' }}</td>
+                <td>{{ item.nickname || '未设置' }}</td>
+                <td>{{ goalLabel(item.healthGoal || 'UNSET') }}</td>
+                <td>{{ item.dailyCalorieTarget ? `${item.dailyCalorieTarget} kcal` : '未设置' }}</td>
+                <td>{{ bodyProfile(item) }}</td>
+                <td>{{ genderLabel(item.gender) }}</td>
+                <td>{{ item.analysisCount }}</td>
+                <td>{{ formatDateTime(item.createdAt) }}</td>
+                <td>{{ formatDateTime(item.lastAnalysisAt) }}</td>
+              </tr>
+              <tr v-if="!records?.content?.length">
+                <td colspan="10" class="records-empty">暂无用户记录</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div v-else class="table-scroll">
+          <table class="records-table logs-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>用户</th>
+                <th>手机号</th>
+                <th>任务 ID</th>
+                <th>餐次</th>
+                <th>状态</th>
+                <th>识别食物</th>
+                <th>总热量</th>
+                <th>建议</th>
+                <th>记录时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in records?.content || []" :key="item.id">
+                <td class="mono-cell">{{ item.id }}</td>
+                <td class="mono-cell">#{{ item.userId }}</td>
+                <td class="phone-cell">{{ item.phone || '未填写' }}</td>
+                <td class="mono-cell task-cell" :title="item.taskId">{{ shortTaskId(item.taskId) }}</td>
+                <td>{{ mealLabel(item.mealType) }}</td>
+                <td><span class="status-tag" :class="statusClass(item.status)">{{ statusLabel(item.status) }}</span></td>
+                <td class="food-cell">{{ foodLabelsText(item.foodLabels) }}</td>
+                <td>{{ item.totalCalories == null ? '暂无' : `${Number(item.totalCalories).toFixed(1)} kcal` }}</td>
+                <td>{{ item.hasAdvice ? '已生成' : '无' }}</td>
+                <td>{{ formatDateTime(item.loggedAt) }}</td>
+              </tr>
+              <tr v-if="!records?.content?.length">
+                <td colspan="10" class="records-empty">暂无餐食记录</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <footer class="records-footer">
+          <p>手机号仅用于管理员核对测试账号；页面不返回密码哈希、验证码、原始分析 JSON 或图片存储地址。</p>
+          <div class="pagination">
+            <button
+              type="button"
+              class="secondary-button compact-button"
+              :disabled="recordsLoading || recordsPage <= 0"
+              @click="changeRecordsPage(recordsPage - 1)"
+            >
+              上一页
+            </button>
+            <span>第 {{ recordsPage + 1 }} / {{ Math.max(records?.totalPages || 0, 1) }} 页</span>
+            <button
+              type="button"
+              class="secondary-button compact-button"
+              :disabled="recordsLoading || recordsPage + 1 >= (records?.totalPages || 0)"
+              @click="changeRecordsPage(recordsPage + 1)"
+            >
+              下一页
+            </button>
+          </div>
+        </footer>
+      </section>
     </template>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { getAdminDashboard } from '@/api/dietLog'
+import { getAdminDashboard, getAdminRecords } from '@/api/dietLog'
 
 const STORAGE_KEY = 'nutriAdminDashboardKey'
 const adminKey = ref('')
 const dashboard = ref(null)
 const loading = ref(false)
 const error = ref('')
+const records = ref(null)
+const recordsTable = ref('users')
+const recordsPage = ref(0)
+const recordsLoading = ref(false)
+const recordsError = ref('')
 
 const formattedGeneratedAt = computed(() => {
   if (!dashboard.value?.generatedAt) return '刚刚'
@@ -182,6 +324,7 @@ async function loadDashboard() {
   try {
     dashboard.value = await getAdminDashboard(adminKey.value)
     sessionStorage.setItem(STORAGE_KEY, adminKey.value)
+    await loadRecords()
   } catch (e) {
     dashboard.value = null
     error.value = e?.response?.data?.error || '暂时无法加载看板数据'
@@ -194,7 +337,42 @@ function lockDashboard() {
   sessionStorage.removeItem(STORAGE_KEY)
   adminKey.value = ''
   dashboard.value = null
+  records.value = null
+  recordsPage.value = 0
+  recordsError.value = ''
   error.value = ''
+}
+
+async function loadRecords() {
+  if (!adminKey.value) return
+  recordsLoading.value = true
+  recordsError.value = ''
+  try {
+    records.value = await getAdminRecords(
+      adminKey.value,
+      recordsTable.value,
+      recordsPage.value,
+      10
+    )
+  } catch (e) {
+    recordsError.value = e?.response?.data?.error || '暂时无法读取数据库记录'
+  } finally {
+    recordsLoading.value = false
+  }
+}
+
+async function selectRecordsTable(table) {
+  if (recordsTable.value === table) return
+  recordsTable.value = table
+  recordsPage.value = 0
+  records.value = null
+  await loadRecords()
+}
+
+async function changeRecordsPage(page) {
+  if (page < 0 || page >= (records.value?.totalPages || 0)) return
+  recordsPage.value = page
+  await loadRecords()
 }
 
 function shortDate(value) {
@@ -225,6 +403,57 @@ function mealLabel(value) {
     SNACK: '加餐',
     UNKNOWN: '未标记',
   }[value] || value
+}
+
+function genderLabel(value) {
+  return {
+    MALE: '男',
+    FEMALE: '女',
+    OTHER: '其他',
+  }[value] || '未设置'
+}
+
+function bodyProfile(item) {
+  const parts = []
+  if (item.heightCm) parts.push(`${item.heightCm} cm`)
+  if (item.weightKg) parts.push(`${Number(item.weightKg).toFixed(1)} kg`)
+  return parts.join(' / ') || '未设置'
+}
+
+function formatDateTime(value) {
+  if (!value) return '暂无'
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(value))
+}
+
+function shortTaskId(value) {
+  if (!value) return '暂无'
+  return value.length > 13 ? `${value.slice(0, 8)}…${value.slice(-4)}` : value
+}
+
+function foodLabelsText(labels) {
+  return Array.isArray(labels) && labels.length ? labels.join('、') : '暂无'
+}
+
+function statusLabel(value) {
+  return {
+    COMPLETED: '已完成',
+    PENDING: '处理中',
+    FAILED: '失败',
+  }[value] || value || '未知'
+}
+
+function statusClass(value) {
+  return {
+    COMPLETED: 'status-completed',
+    PENDING: 'status-pending',
+    FAILED: 'status-failed',
+  }[value] || ''
 }
 </script>
 
@@ -513,6 +742,213 @@ progress {
   line-height: 1.55;
 }
 
+.records-panel {
+  min-width: 0;
+  margin-top: 12px;
+  padding: 18px;
+  border: 1px solid #d9e0db;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.records-header,
+.records-status,
+.records-footer,
+.pagination {
+  display: flex;
+  align-items: center;
+}
+
+.records-header {
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.records-header h3 {
+  margin-top: 3px;
+  font-size: 1.05rem;
+  letter-spacing: 0;
+}
+
+.records-header p,
+.records-footer p {
+  color: #6c786f;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.records-header p {
+  margin-top: 4px;
+}
+
+.record-tabs {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(88px, 1fr));
+  padding: 3px;
+  border: 1px solid #d4dcd6;
+  border-radius: 7px;
+  background: #f1f4f2;
+}
+
+.record-tabs button {
+  min-height: 36px;
+  padding: 0 13px;
+  border: 0;
+  color: #526158;
+  background: transparent;
+}
+
+.record-tabs button.active {
+  color: #fff;
+  background: #2e5d44;
+}
+
+.records-status {
+  gap: 10px;
+  min-height: 46px;
+  margin-top: 12px;
+  padding: 8px 0;
+  border-top: 1px solid #e3e8e4;
+}
+
+.records-status span {
+  padding: 4px 7px;
+  border-radius: 4px;
+  color: #4e5f55;
+  background: #edf2ef;
+  font-family: Consolas, 'SFMono-Regular', monospace;
+  font-size: 0.76rem;
+}
+
+.records-status strong {
+  font-size: 0.8rem;
+}
+
+.records-status .compact-button {
+  margin-left: auto;
+}
+
+.compact-button {
+  min-height: 34px;
+  padding: 0 11px;
+  font-size: 0.76rem;
+}
+
+.records-error {
+  margin: 0 0 10px;
+}
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #e0e5e1;
+  border-radius: 6px;
+}
+
+.records-table {
+  width: 100%;
+  min-width: 1080px;
+  border-collapse: collapse;
+  color: #334139;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.records-table th,
+.records-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid #e6eae7;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.records-table th {
+  position: sticky;
+  top: 0;
+  color: #607067;
+  background: #f5f7f6;
+  font-size: 0.73rem;
+  font-weight: 800;
+}
+
+.records-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.records-table tbody tr:hover {
+  background: #fafcfb;
+}
+
+.phone-cell {
+  color: #21372a;
+  font-weight: 750;
+}
+
+.mono-cell {
+  font-family: Consolas, 'SFMono-Regular', monospace;
+  font-size: 0.74rem;
+}
+
+.task-cell {
+  max-width: 150px;
+}
+
+.food-cell {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-tag {
+  display: inline-block;
+  padding: 4px 7px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.status-completed {
+  color: #245b3d;
+  background: #e4f2e9;
+}
+
+.status-pending {
+  color: #78521f;
+  background: #fff2d9;
+}
+
+.status-failed {
+  color: #8b3832;
+  background: #fae7e5;
+}
+
+.records-empty {
+  padding: 28px;
+  color: #718078;
+  text-align: center;
+}
+
+.records-footer {
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.records-footer p {
+  max-width: 720px;
+}
+
+.pagination {
+  flex: 0 0 auto;
+  gap: 9px;
+}
+
+.pagination span {
+  color: #59685f;
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
 @media (max-width: 1100px) {
   .metric-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -528,6 +964,11 @@ progress {
 
   .privacy-panel {
     grid-column: 1 / -1;
+  }
+
+  .records-footer {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 
@@ -562,6 +1003,32 @@ progress {
   .legend {
     display: grid;
     gap: 3px;
+  }
+
+  .records-panel {
+    padding: 14px;
+  }
+
+  .records-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .record-tabs {
+    width: 100%;
+  }
+
+  .records-status {
+    flex-wrap: wrap;
+  }
+
+  .records-status .compact-button {
+    margin-left: 0;
+  }
+
+  .pagination {
+    width: 100%;
+    justify-content: space-between;
   }
 }
 </style>
