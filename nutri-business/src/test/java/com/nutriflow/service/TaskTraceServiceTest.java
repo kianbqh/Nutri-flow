@@ -27,10 +27,15 @@ class TaskTraceServiceTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(jdbcTemplate).query(sql.capture(), any(RowMapper.class), anyInt());
         assertThat(sql.getValue())
-                .contains("JSON_EXTRACT", "SELECT MAX(e.occurred_at)")
+                .contains(
+                        "JSON_EXTRACT",
+                        "SELECT MAX(e.occurred_at)",
+                        "ORDER BY d.id DESC"
+                )
                 .doesNotContain(
                         "GROUP BY",
-                        "SELECT d.task_id, d.meal_type, d.logged_at, d.analysis_result"
+                        "SELECT d.task_id, d.meal_type, d.logged_at, d.analysis_result",
+                        "ORDER BY d.logged_at"
                 );
     }
 }

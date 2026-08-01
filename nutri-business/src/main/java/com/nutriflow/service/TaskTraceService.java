@@ -79,7 +79,7 @@ public class TaskTraceService {
                            WHERE e.task_id = d.task_id
                        ) AS last_event_at
                 FROM diet_logs d
-                ORDER BY d.logged_at DESC
+                ORDER BY d.id DESC
                 LIMIT ?
                 """, (rs, rowNum) -> {
             Map<String, Object> task = new LinkedHashMap<>();
