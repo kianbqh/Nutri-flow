@@ -66,18 +66,26 @@ public class TaskTraceService {
     public List<Map<String, Object>> recentTasks(int requestedLimit) {
         int limit = Math.max(5, Math.min(requestedLimit, 50));
         return jdbcTemplate.query("""
-                SELECT d.task_id, d.meal_type, d.logged_at, d.analysis_result,
-                       MAX(e.occurred_at) AS last_event_at
+                SELECT d.task_id, d.meal_type, d.logged_at,
+                       CASE
+                           WHEN d.analysis_result IS NULL THEN 'PENDING'
+                           WHEN JSON_UNQUOTE(JSON_EXTRACT(d.analysis_result, '$.status')) = 'FAILED'
+                               THEN 'FAILED'
+                           ELSE 'COMPLETED'
+                       END AS result_status,
+                       (
+                           SELECT MAX(e.occurred_at)
+                           FROM task_trace_events e
+                           WHERE e.task_id = d.task_id
+                       ) AS last_event_at
                 FROM diet_logs d
-                LEFT JOIN task_trace_events e ON e.task_id = d.task_id
-                GROUP BY d.id, d.task_id, d.meal_type, d.logged_at, d.analysis_result
                 ORDER BY d.logged_at DESC
                 LIMIT ?
                 """, (rs, rowNum) -> {
             Map<String, Object> task = new LinkedHashMap<>();
             task.put("taskId", rs.getString("task_id"));
             task.put("mealType", rs.getString("meal_type"));
-            task.put("status", resultStatus(rs.getString("analysis_result")));
+            task.put("status", rs.getString("result_status"));
             task.put("startedAt", timestamp(rs.getTimestamp("logged_at")));
             task.put("updatedAt", timestamp(rs.getTimestamp("last_event_at")));
             return task;
