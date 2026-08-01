@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import TYPE_CHECKING
 
 import aio_pika
 from pydantic_settings import BaseSettings
+
+from app.trace_client import record_trace_event
 
 if TYPE_CHECKING:
     from app.graph import AgentState
@@ -57,6 +60,14 @@ async def publish_result(state: "AgentState") -> dict:
     }
 
     logger.info("Publishing result for task_id=%s to routing_key=%s", task_id, routing_key)
+    started_at = time.perf_counter()
+    await record_trace_event(
+        task_id,
+        "RESULT_QUEUE",
+        "RUNNING",
+        "正在发布分析结果",
+        service="rabbitmq",
+    )
 
     try:
         connection = await aio_pika.connect_robust(_settings.rabbitmq_url)
@@ -72,9 +83,25 @@ async def publish_result(state: "AgentState") -> dict:
                 routing_key=routing_key,
             )
         logger.info("Result published successfully for task_id=%s", task_id)
+        await record_trace_event(
+            task_id,
+            "RESULT_QUEUE",
+            "COMPLETED",
+            "分析结果已发布到返回队列",
+            service="rabbitmq",
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
         workflow_trace.append(f"publish_result: published to {routing_key}")
     except Exception as exc:
         logger.error("Failed to publish result for task_id=%s: %s", task_id, exc)
+        await record_trace_event(
+            task_id,
+            "RESULT_QUEUE",
+            "FAILED",
+            "分析结果发布失败",
+            service="rabbitmq",
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
         workflow_trace.append("publish_result: publish failed")
         return {"error": f"Result publish failed: {exc}", "workflow_trace": workflow_trace}
 

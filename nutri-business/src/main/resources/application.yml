@@ -73,6 +73,8 @@ nutri:
     expose-debug-code: ${NUTRI_AUTH_EXPOSE_DEBUG_CODE:true}
   admin:
     dashboard-key: ${NUTRI_ADMIN_DASHBOARD_KEY:}
+  internal:
+    trace-key: ${NUTRI_INTERNAL_TRACE_KEY:}
   llm:
     api-key: ${NUTRI_LLM_API_KEY:}
     base-url: ${NUTRI_LLM_BASE_URL:https://api.moonshot.cn/v1}

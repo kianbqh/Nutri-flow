@@ -214,12 +214,14 @@ class ResultPage extends StatelessWidget {
                 _hasInteractiveRegions(result.detectedItems)) ...[
               const SizedBox(height: 12),
               AppSurfaceCard(
-                child: ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  childrenPadding: const EdgeInsets.only(top: 8),
-                  title: const Text('查看分割区域'),
-                  subtitle: const Text('点击轮廓查看详情'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const Text('分割区域',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    const Text('点击图中区域查看对应食物'),
+                    const SizedBox(height: 10),
                     _InteractiveSegmentationCanvas(
                       overlayImageBytes: interactiveBaseImage,
                       originalImageBytes: imageBytes,
@@ -232,11 +234,14 @@ class ResultPage extends StatelessWidget {
             ] else if (segPreview != null) ...[
               const SizedBox(height: 12),
               AppSurfaceCard(
-                child: ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  childrenPadding: const EdgeInsets.only(top: 8),
-                  title: const Text('查看分割区域'),
-                  children: [_ResultImagePreview(imageBytes: segPreview)],
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('分割区域',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 10),
+                    _ResultImagePreview(imageBytes: segPreview),
+                  ],
                 ),
               ),
             ],

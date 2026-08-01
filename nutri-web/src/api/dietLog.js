@@ -233,3 +233,22 @@ export async function getAdminRecords(adminKey, table, page = 0, size = 10) {
   })
   return data
 }
+
+export async function getAdminRecentTaskTraces(adminKey, limit = 12) {
+  const { data } = await api.get('/admin/dashboard/task-traces/recent', {
+    params: { limit },
+    headers: {
+      'X-Nutri-Admin-Key': adminKey,
+    },
+  })
+  return data
+}
+
+export async function getAdminTaskTrace(adminKey, taskId) {
+  const { data } = await api.get(`/admin/dashboard/task-traces/${taskId}`, {
+    headers: {
+      'X-Nutri-Admin-Key': adminKey,
+    },
+  })
+  return data
+}

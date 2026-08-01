@@ -76,14 +76,19 @@
       </div>
     </section>
 
-    <details class="surface-card mask-stage">
-      <summary>查看分割区域</summary>
+    <section class="surface-card mask-stage">
+      <header class="section-head">
+        <div>
+          <h3 class="section-title">分割区域</h3>
+          <p>点击图中区域可查看对应食物。</p>
+        </div>
+      </header>
       <MaskCanvas
         :image-url="imageUrl"
         :preview-image-url="segmentationPreviewUrl"
         :items="detectedItems"
       />
-    </details>
+    </section>
 
     <div v-if="backTo" class="page-actions result-actions">
       <RouterLink :to="backTo" class="button button--secondary">{{ backLabel }}</RouterLink>
@@ -358,13 +363,10 @@ function formatMetric(value) {
   gap: 16px;
 }
 
-.mask-stage summary {
-  cursor: pointer;
-  font-weight: 800;
-}
-
-.mask-stage[open] summary {
-  margin-bottom: 16px;
+.mask-stage .section-head p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.86rem;
 }
 
 .table-wrap {

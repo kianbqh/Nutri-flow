@@ -37,6 +37,10 @@
 			path /api/*
 			header X-Nutri-Access-Code {$NUTRI_ACCESS_CODE}
 		}
+		@internalTrace path /api/v1/internal/task-traces/*
+		handle @internalTrace {
+			respond 404
+		}
 		handle @apiWithCode {
 			reverse_proxy business:8080 {
 				transport http {
@@ -94,6 +98,7 @@
 		format filter {
 			request>headers>X-Nutri-Access-Code delete
 			request>headers>X-Nutri-Admin-Key delete
+			request>headers>X-Nutri-Trace-Key delete
 			request>headers>Cookie delete
 			wrap console
 		}

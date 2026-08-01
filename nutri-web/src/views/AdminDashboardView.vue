@@ -46,6 +46,93 @@
         </article>
       </section>
 
+      <section class="trace-panel" aria-labelledby="trace-title">
+        <header class="trace-header">
+          <div>
+            <span class="section-kicker">实时任务定位</span>
+            <h3 id="trace-title">分析全链路</h3>
+          </div>
+          <span class="live-indicator"><i></i>自动更新</span>
+        </header>
+
+        <div class="trace-controls">
+          <label>
+            <span>最近任务</span>
+            <select v-model="selectedTaskId" @change="loadTaskTrace()">
+              <option v-for="task in recentTasks" :key="task.taskId" :value="task.taskId">
+                {{ shortTaskId(task.taskId) }} · {{ mealLabel(task.mealType) }} · {{ statusLabel(task.status) }}
+              </option>
+            </select>
+          </label>
+          <form class="trace-search" @submit.prevent="inspectTask(traceLookup)">
+            <label for="trace-task-id">任务 ID</label>
+            <div>
+              <input id="trace-task-id" v-model.trim="traceLookup" placeholder="输入完整 taskId" />
+              <button type="submit" :disabled="traceLoading || !traceLookup">定位任务</button>
+            </div>
+          </form>
+        </div>
+
+        <p v-if="traceError" class="error-text trace-error">{{ traceError }}</p>
+        <div v-if="traceLoading && !taskTrace" class="trace-empty">正在读取任务链路…</div>
+
+        <template v-else-if="taskTrace">
+          <div class="trace-summary">
+            <div>
+              <span>当前位置</span>
+              <strong>{{ taskTrace.currentStageLabel }}</strong>
+            </div>
+            <div>
+              <span>任务状态</span>
+              <strong :class="`trace-text-${taskTrace.status.toLowerCase()}`">{{ statusLabel(taskTrace.status) }}</strong>
+            </div>
+            <div>
+              <span>总耗时</span>
+              <strong>{{ formatDuration(taskTrace.elapsedMs) }}</strong>
+            </div>
+            <div>
+              <span>最后事件</span>
+              <strong>{{ formatDateTime(taskTrace.updatedAt) }}</strong>
+            </div>
+          </div>
+
+          <div v-if="taskTrace.stalled" class="trace-alert">
+            当前节点超过 60 秒没有新事件，优先检查“{{ taskTrace.currentStageLabel }}”服务。
+          </div>
+
+          <ol class="trace-chain" aria-label="任务处理链路">
+            <li
+              v-for="(stage, index) in taskTrace.stages"
+              :key="stage.code"
+              class="trace-stage"
+              :class="`trace-stage--${stage.status.toLowerCase()}`"
+            >
+              <div class="trace-node" :aria-label="`${stage.label}：${traceStatusLabel(stage.status)}`">
+                <span>{{ stage.status === 'COMPLETED' ? '✓' : index + 1 }}</span>
+              </div>
+              <div class="trace-stage-copy">
+                <strong>{{ stage.label }}</strong>
+                <span>{{ stage.service }}</span>
+                <small>{{ stage.detail || traceStatusLabel(stage.status) }}</small>
+                <small v-if="stage.durationMs != null">{{ formatDuration(stage.durationMs) }}</small>
+              </div>
+            </li>
+          </ol>
+
+          <details class="trace-events">
+            <summary>事件明细（{{ taskTrace.events.length }}）</summary>
+            <div v-if="taskTrace.events.length" class="trace-event-list">
+              <div v-for="(event, index) in [...taskTrace.events].reverse()" :key="`${event.occurredAt}-${index}`">
+                <time>{{ formatTime(event.occurredAt) }}</time>
+                <strong>{{ stageLabel(event.stage) }}</strong>
+                <span>{{ event.detail || traceStatusLabel(event.state) }}</span>
+              </div>
+            </div>
+            <p v-else>这是旧任务，链路状态由最终结果推断。</p>
+          </details>
+        </template>
+      </section>
+
       <section class="dashboard-grid">
         <article class="panel trend-panel">
           <header>
@@ -222,7 +309,11 @@
                 <td class="mono-cell">{{ item.id }}</td>
                 <td class="mono-cell">#{{ item.userId }}</td>
                 <td class="phone-cell">{{ item.phone || '未填写' }}</td>
-                <td class="mono-cell task-cell" :title="item.taskId">{{ shortTaskId(item.taskId) }}</td>
+                <td class="mono-cell task-cell" :title="item.taskId">
+                  <button type="button" class="task-link" @click="inspectTask(item.taskId)">
+                    {{ shortTaskId(item.taskId) }}
+                  </button>
+                </td>
                 <td>{{ mealLabel(item.mealType) }}</td>
                 <td><span class="status-tag" :class="statusClass(item.status)">{{ statusLabel(item.status) }}</span></td>
                 <td class="food-cell">{{ foodLabelsText(item.foodLabels) }}</td>
@@ -265,8 +356,13 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { getAdminDashboard, getAdminRecords } from '@/api/dietLog'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import {
+  getAdminDashboard,
+  getAdminRecords,
+  getAdminRecentTaskTraces,
+  getAdminTaskTrace,
+} from '@/api/dietLog'
 
 const STORAGE_KEY = 'nutriAdminDashboardKey'
 const adminKey = ref('')
@@ -278,6 +374,13 @@ const recordsTable = ref('users')
 const recordsPage = ref(0)
 const recordsLoading = ref(false)
 const recordsError = ref('')
+const recentTasks = ref([])
+const selectedTaskId = ref('')
+const traceLookup = ref('')
+const taskTrace = ref(null)
+const traceLoading = ref(false)
+const traceError = ref('')
+let tracePollTimer = null
 
 const formattedGeneratedAt = computed(() => {
   if (!dashboard.value?.generatedAt) return '刚刚'
@@ -314,6 +417,8 @@ onMounted(() => {
   if (adminKey.value) loadDashboard()
 })
 
+onBeforeUnmount(stopTracePolling)
+
 async function loadDashboard() {
   if (!adminKey.value) {
     error.value = '请输入管理码'
@@ -324,7 +429,7 @@ async function loadDashboard() {
   try {
     dashboard.value = await getAdminDashboard(adminKey.value)
     sessionStorage.setItem(STORAGE_KEY, adminKey.value)
-    await loadRecords()
+    await Promise.all([loadRecords(), loadRecentTasks()])
   } catch (e) {
     dashboard.value = null
     error.value = e?.response?.data?.error || '暂时无法加载看板数据'
@@ -341,6 +446,72 @@ function lockDashboard() {
   recordsPage.value = 0
   recordsError.value = ''
   error.value = ''
+  recentTasks.value = []
+  selectedTaskId.value = ''
+  taskTrace.value = null
+  traceError.value = ''
+  stopTracePolling()
+}
+
+async function loadRecentTasks() {
+  if (!adminKey.value) return
+  try {
+    const response = await getAdminRecentTaskTraces(adminKey.value, 16)
+    recentTasks.value = response?.tasks || []
+    if (!selectedTaskId.value && recentTasks.value.length) {
+      selectedTaskId.value = recentTasks.value[0].taskId
+      traceLookup.value = selectedTaskId.value
+    }
+    if (selectedTaskId.value) {
+      await loadTaskTrace()
+      startTracePolling()
+    }
+  } catch (e) {
+    traceError.value = e?.response?.data?.error || '任务链路暂时不可用'
+  }
+}
+
+async function inspectTask(taskId) {
+  const normalized = String(taskId || '').trim()
+  if (!normalized) return
+  selectedTaskId.value = normalized
+  traceLookup.value = normalized
+  await loadTaskTrace()
+  startTracePolling()
+  document.querySelector('.trace-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+async function loadTaskTrace({ silent = false } = {}) {
+  if (!adminKey.value || !selectedTaskId.value) return
+  traceLookup.value = selectedTaskId.value
+  if (!silent) traceLoading.value = true
+  traceError.value = ''
+  try {
+    taskTrace.value = await getAdminTaskTrace(adminKey.value, selectedTaskId.value)
+    const task = recentTasks.value.find(item => item.taskId === selectedTaskId.value)
+    if (task && taskTrace.value) task.status = taskTrace.value.status
+  } catch (e) {
+    traceError.value = e?.response?.status === 404
+      ? '没有找到这个任务 ID'
+      : e?.response?.data?.error || '暂时无法读取任务链路'
+  } finally {
+    traceLoading.value = false
+  }
+}
+
+function startTracePolling() {
+  stopTracePolling()
+  tracePollTimer = window.setInterval(async () => {
+    if (document.visibilityState !== 'visible' || !selectedTaskId.value) return
+    await loadTaskTrace({ silent: true })
+  }, 2_000)
+}
+
+function stopTracePolling() {
+  if (tracePollTimer !== null) {
+    window.clearInterval(tracePollTimer)
+    tracePollTimer = null
+  }
 }
 
 async function loadRecords() {
@@ -454,6 +625,45 @@ function statusClass(value) {
     PENDING: 'status-pending',
     FAILED: 'status-failed',
   }[value] || ''
+}
+
+function traceStatusLabel(value) {
+  return {
+    COMPLETED: '已通过',
+    RUNNING: '处理中',
+    FAILED: '在此失败',
+    DEGRADED: '已降级处理',
+    WAITING: '等待进入',
+  }[value] || value || '未知'
+}
+
+function stageLabel(value) {
+  return {
+    UPLOAD: '接收上传',
+    QUEUE: '进入任务队列',
+    AGENT: 'Agent 接收',
+    SEGMENTATION: '食物分割',
+    ADVICE: '营养建议',
+    RESULT_QUEUE: '返回结果队列',
+    DATABASE: '写入结果',
+  }[value] || value
+}
+
+function formatDuration(value) {
+  const milliseconds = Number(value || 0)
+  if (milliseconds < 1_000) return `${Math.round(milliseconds)} ms`
+  if (milliseconds < 60_000) return `${(milliseconds / 1_000).toFixed(1)} s`
+  return `${Math.floor(milliseconds / 60_000)}m ${Math.round((milliseconds % 60_000) / 1_000)}s`
+}
+
+function formatTime(value) {
+  if (!value) return '—'
+  return new Intl.DateTimeFormat('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(new Date(value))
 }
 </script>
 
@@ -597,6 +807,289 @@ button:disabled {
   color: #7a877f;
   font-size: 0.76rem;
   line-height: 1.4;
+}
+
+.trace-panel {
+  margin-top: 12px;
+  padding: 18px;
+  border: 1px solid #d9e0db;
+  border-radius: 8px;
+  background: #fff;
+  scroll-margin-top: 18px;
+}
+
+.trace-header,
+.trace-controls,
+.trace-search > div {
+  display: flex;
+  align-items: center;
+}
+
+.trace-header {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.trace-header h3 {
+  margin-top: 3px;
+  font-size: 1.05rem;
+}
+
+.live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #417257;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.live-indicator i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4f8b68;
+  box-shadow: 0 0 0 4px rgba(79, 139, 104, 0.12);
+}
+
+.trace-controls {
+  align-items: end;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.trace-controls > label,
+.trace-search {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.trace-controls > label {
+  flex: 0 1 360px;
+}
+
+.trace-search {
+  flex: 1 1 420px;
+}
+
+.trace-controls label > span,
+.trace-search > label {
+  color: #68766d;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.trace-controls select,
+.trace-controls input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid #ccd5cf;
+  background: #fff;
+}
+
+.trace-controls select {
+  padding: 0 12px;
+  border-radius: 6px;
+}
+
+.trace-controls input {
+  padding: 0 12px;
+  border-radius: 6px 0 0 6px;
+}
+
+.trace-search button {
+  min-height: 42px;
+  border-radius: 0 6px 6px 0;
+  white-space: nowrap;
+}
+
+.trace-error,
+.trace-empty {
+  margin-top: 14px;
+}
+
+.trace-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 16px;
+  overflow: hidden;
+  border: 1px solid #dce2de;
+  border-radius: 6px;
+  background: #dce2de;
+}
+
+.trace-summary > div {
+  min-width: 0;
+  padding: 12px 14px;
+  background: #f9fbfa;
+}
+
+.trace-summary span {
+  display: block;
+  color: #708078;
+  font-size: 0.72rem;
+}
+
+.trace-summary strong {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+.trace-text-completed { color: #397553; }
+.trace-text-pending { color: #a8662f; }
+.trace-text-failed { color: #aa3f36; }
+
+.trace-alert {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-left: 3px solid #c36a3b;
+  background: #fff6ef;
+  color: #87472a;
+  font-size: 0.84rem;
+}
+
+.trace-chain {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(108px, 1fr));
+  gap: 0;
+  margin: 22px 0 0;
+  padding: 0;
+  overflow-x: auto;
+  list-style: none;
+}
+
+.trace-stage {
+  position: relative;
+  min-width: 108px;
+  padding: 0 8px;
+  text-align: center;
+}
+
+.trace-stage:not(:last-child)::after {
+  position: absolute;
+  top: 17px;
+  left: calc(50% + 18px);
+  width: calc(100% - 36px);
+  height: 2px;
+  background: #d8dfda;
+  content: '';
+}
+
+.trace-stage--completed:not(:last-child)::after {
+  background: #5f9974;
+}
+
+.trace-node {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  margin: 0 auto;
+  place-items: center;
+  border: 2px solid #cbd4ce;
+  border-radius: 50%;
+  color: #79867e;
+  background: #fff;
+  font-weight: 800;
+}
+
+.trace-stage--completed .trace-node {
+  border-color: #4f8b68;
+  color: #fff;
+  background: #4f8b68;
+}
+
+.trace-stage--running .trace-node {
+  border-color: #d38349;
+  color: #9b572d;
+  background: #fff3e8;
+  box-shadow: 0 0 0 5px rgba(211, 131, 73, 0.13);
+}
+
+.trace-stage--degraded .trace-node {
+  border-color: #d38349;
+  color: #9b572d;
+  background: #fff3e8;
+}
+
+.trace-stage--failed .trace-node {
+  border-color: #b74e43;
+  color: #fff;
+  background: #b74e43;
+}
+
+.trace-stage-copy {
+  display: grid;
+  gap: 3px;
+  margin-top: 9px;
+}
+
+.trace-stage-copy strong {
+  font-size: 0.78rem;
+}
+
+.trace-stage-copy span,
+.trace-stage-copy small {
+  color: #748078;
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.trace-stage-copy small {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.trace-events {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid #e3e8e5;
+}
+
+.trace-events summary {
+  cursor: pointer;
+  color: #53635a;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.trace-event-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.trace-event-list > div {
+  display: grid;
+  grid-template-columns: 72px 110px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  font-size: 0.75rem;
+}
+
+.trace-event-list time,
+.trace-event-list span {
+  color: #6d7a72;
+}
+
+.task-link {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  color: #2e6a4a;
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .dashboard-grid {
@@ -970,6 +1463,10 @@ progress {
     align-items: flex-start;
     flex-direction: column;
   }
+
+  .trace-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -984,6 +1481,67 @@ progress {
 
   .dashboard-toolbar {
     align-items: flex-start;
+  }
+
+  .dashboard-toolbar,
+  .trace-controls {
+    flex-direction: column;
+  }
+
+  .trace-controls {
+    align-items: stretch;
+  }
+
+  .trace-controls > label,
+  .trace-search {
+    flex-basis: auto;
+    width: 100%;
+  }
+
+  .trace-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .trace-event-list > div {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .trace-event-list span {
+    grid-column: 1 / -1;
+  }
+
+  .trace-chain {
+    grid-template-columns: 1fr;
+    gap: 0;
+    overflow: visible;
+  }
+
+  .trace-stage {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 12px;
+    min-width: 0;
+    padding: 0 0 16px;
+    text-align: left;
+  }
+
+  .trace-stage:not(:last-child)::after {
+    top: 36px;
+    left: 17px;
+    width: 2px;
+    height: calc(100% - 36px);
+  }
+
+  .trace-node {
+    margin: 0;
+  }
+
+  .trace-stage-copy {
+    margin-top: 1px;
+  }
+
+  .trace-stage-copy small {
+    -webkit-line-clamp: 3;
   }
 
   .metric-grid,

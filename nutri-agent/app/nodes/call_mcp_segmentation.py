@@ -24,6 +24,8 @@ import numpy as np
 from PIL import Image
 from pydantic_settings import BaseSettings
 
+from app.trace_client import record_trace_event
+
 if TYPE_CHECKING:
     from app.graph import AgentState
 else:
@@ -256,6 +258,42 @@ async def _run_local_segmentation_fallback(
 
 
 async def call_mcp_segmentation(state: "AgentState") -> dict:
+    task_id = state["task_id"]
+    started_at = time.perf_counter()
+    await record_trace_event(
+        task_id,
+        "SEGMENTATION",
+        "RUNNING",
+        "正在调用食物实例分割模型",
+        service="inference",
+    )
+    try:
+        result = await _call_mcp_segmentation_impl(state)
+        segmentation = result.get("segmentation_result") or {}
+        failed = bool(segmentation.get("error"))
+        await record_trace_event(
+            task_id,
+            "SEGMENTATION",
+            "DEGRADED" if failed else "COMPLETED",
+            segmentation.get("error")
+            or f"分割完成，识别 {len(segmentation.get('detected_instances') or [])} 个区域",
+            service="inference",
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return result
+    except Exception:
+        await record_trace_event(
+            task_id,
+            "SEGMENTATION",
+            "FAILED",
+            "分割节点发生未处理异常",
+            service="inference",
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        raise
+
+
+async def _call_mcp_segmentation_impl(state: "AgentState") -> dict:
     """
     Invoke the segmentation endpoint on nutri-ai-mcp.
 

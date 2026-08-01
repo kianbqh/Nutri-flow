@@ -8,6 +8,7 @@ import com.nutriflow.mq.ImageAnalysisTaskMessage;
 import com.nutriflow.repository.DietLogRepository;
 import com.nutriflow.repository.UserRepository;
 import com.nutriflow.service.OssService;
+import com.nutriflow.service.TaskTraceService;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
@@ -56,6 +57,7 @@ public class DietLogController {
     private final DietLogRepository dietLogRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+    private final TaskTraceService taskTraceService;
 
     /**
      * Upload a meal image and dispatch an analysis task.
@@ -102,6 +104,10 @@ public class DietLogController {
         dietLog.setMealType(mealType);
         dietLog.setOssKey(ossKey);
         dietLogRepository.save(dietLog);
+        taskTraceService.recordEvent(
+                taskId, "UPLOAD", "COMPLETED", "business",
+                "图片已存储，任务记录已创建", null
+        );
 
         ImageAnalysisTaskMessage message = ImageAnalysisTaskMessage.builder()
                 .taskId(taskId)
@@ -116,6 +122,10 @@ public class DietLogController {
                 .build();
 
         producer.publishTask(message);
+        taskTraceService.recordEvent(
+                taskId, "QUEUE", "COMPLETED", "business",
+                "分析任务已发布到 RabbitMQ", null
+        );
 
         log.info("Dispatched analysis task: taskId={}", taskId);
         return ResponseEntity.accepted().body(Map.of(
@@ -145,6 +155,10 @@ public class DietLogController {
                         String timeoutJson = buildPendingTimeoutResult(log_);
                         log_.setAnalysisResult(timeoutJson);
                         dietLogRepository.save(log_);
+                        taskTraceService.recordEvent(
+                                taskId, "DATABASE", "FAILED", "business",
+                                "任务超过服务端等待上限", null
+                        );
                         completed = true;
                     }
 

@@ -86,7 +86,7 @@ export const useFoodStore = defineStore('food', () => {
       if (_pollInFlight) return
       if (Date.now() - _pollStart > POLL_TIMEOUT_MS) {
         stopPolling()
-        error.value = '分析超时，请稍后刷新页面重试'
+        error.value = '分析等待超时，请在历史记录中查看最终状态'
         status.value = 'FAILED'
         return
       }
@@ -97,6 +97,7 @@ export const useFoodStore = defineStore('food', () => {
         if (generation !== _pollGeneration) return
         if (result.status === 'COMPLETED' && result.analysisResult) {
           stopPolling()
+          await loadTaskImage(id)
           applyAnalysisResult(result.analysisResult)
           return
         } else if (result.status === 'FAILED') {
@@ -166,14 +167,7 @@ export const useFoodStore = defineStore('food', () => {
       status.value = result.status || 'PENDING'
 
       if (result.status === 'COMPLETED' && result.analysisResult) {
-        try {
-          const imageBlob = await getTaskImageBlob(id)
-          if (imageBlob && imageBlob.size > 0) {
-            setOwnedPreviewUrl(URL.createObjectURL(imageBlob))
-          }
-        } catch {
-          clearOwnedPreviewUrl()
-        }
+        await loadTaskImage(id)
 
         applyAnalysisResult(result.analysisResult)
         status.value = 'COMPLETED'
@@ -206,6 +200,17 @@ export const useFoodStore = defineStore('food', () => {
     detectedItems.value = []
     adviceReport.value = null
     error.value = null
+  }
+
+  async function loadTaskImage(id) {
+    try {
+      const imageBlob = await getTaskImageBlob(id)
+      if (imageBlob && imageBlob.size > 0) {
+        setOwnedPreviewUrl(URL.createObjectURL(imageBlob))
+      }
+    } catch {
+      clearOwnedPreviewUrl()
+    }
   }
 
   function setOwnedPreviewUrl(url) {

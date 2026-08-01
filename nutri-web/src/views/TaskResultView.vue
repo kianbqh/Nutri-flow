@@ -37,10 +37,8 @@
     </section>
     <section v-else-if="foodStore.status !== 'COMPLETED'" class="surface-card empty-state">
       <h3>结果暂未准备好</h3>
-      <p>当前状态为“{{ statusLabel }}”。准备完成后即可在这里查看完整结果。</p>
-      <div class="page-actions">
-        <button class="button button--secondary" type="button" @click="loadResult">刷新状态</button>
-      </div>
+      <p>{{ foodStore.error || `当前状态为“${statusLabel}”。页面会自动更新，完成后直接展示结果。` }}</p>
+      <span v-if="foodStore.status === 'PENDING'" class="live-wait"><i></i>后台分析中</span>
     </section>
     <AnalysisResultPanel
       v-else
@@ -57,7 +55,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import AnalysisResultPanel from '@/components/AnalysisResultPanel.vue'
 import { useFoodStore } from '@/stores/food'
@@ -78,7 +76,7 @@ const statusLabel = computed(() => {
 const statusHint = computed(() => {
   const normalized = (foodStore.status || '').toString().toUpperCase()
   if (normalized === 'COMPLETED') return '结果已经可以查看。'
-  if (normalized === 'PENDING') return '任务仍在处理中，可以稍后刷新查看。'
+  if (normalized === 'PENDING') return '任务仍在处理中，完成后页面会自动更新。'
   if (normalized === 'FAILED') return '这次分析未成功完成，请稍后重试。'
   return '结果准备后会显示在这里。'
 })
@@ -86,6 +84,8 @@ const statusHint = computed(() => {
 watch(taskId, () => {
   loadResult()
 }, { immediate: true })
+
+onBeforeUnmount(() => foodStore.stopPolling())
 
 async function loadResult() {
   if (!taskId.value) {
@@ -119,5 +119,21 @@ async function loadResult() {
 
 .empty-state--error p {
   color: var(--danger);
+}
+
+.live-wait {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.live-wait i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 5px rgba(190, 104, 51, 0.12);
 }
 </style>

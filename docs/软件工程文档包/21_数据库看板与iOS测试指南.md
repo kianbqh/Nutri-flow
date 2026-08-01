@@ -133,9 +133,31 @@ G:\GraduationProj_Nutri-flow\Nutri-flow\.runtime\dashboard-admin-key.txt
 - 两张表均使用服务端分页，单页默认 10 条
 - 不返回密码哈希、验证码、邮箱、用户名、原始分析 JSON 或图片对象存储地址
 
+看板中的“分析全链路”会按 `taskId` 自动展示以下位置：
+
+1. 接收上传
+2. 进入任务队列
+3. Agent 接收
+4. 食物分割
+5. 营养建议
+6. 返回结果队列
+7. 写入结果
+
+处理中每 2 秒自动更新，不需要手动刷新。节点超过 60 秒没有新事件时，
+看板会标记为疑似卡住并指出应优先检查的服务。餐食记录中的任务 ID 可以
+直接点击定位。追踪事件只包含阶段、状态、服务名、耗时和简短诊断，不保存
+图片、手机号、授权码或模型输入。
+
 聚合接口为 `GET /api/v1/admin/dashboard`，记录接口为
 `GET /api/v1/admin/dashboard/records?table=users&page=0&size=10`。两者都要求
 `X-Nutri-Admin-Key` 请求头并设置 `Cache-Control: no-store`。
+
+追踪接口为：
+
+- `GET /api/v1/admin/dashboard/task-traces/recent`
+- `GET /api/v1/admin/dashboard/task-traces/{taskId}`
+
+Agent 的事件写入接口仅允许容器网络访问，公网网关固定返回 `404`。
 
 ## 4. 备份
 

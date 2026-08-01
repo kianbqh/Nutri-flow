@@ -16,7 +16,7 @@
   <!-- ── Coordinates ── -->
   <groupId>com.nutriflow</groupId>
   <artifactId>nutri-business</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>1.1.0</version>
   <name>nutri-business</name>
   <description>Nutri-Flow business backend – user profiles, diet logs, OSS upload, MQ producer</description>
 

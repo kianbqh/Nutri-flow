@@ -16,6 +16,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.trace_client import record_trace_event
+
 if TYPE_CHECKING:
     from app.graph import AgentState
 else:
@@ -796,6 +798,36 @@ def _build_segmentation_summary(segmentation_result: dict | None) -> str:
 
 
 async def generate_advice(state: "AgentState") -> dict:
+    task_id = state["task_id"]
+    started_at = time.perf_counter()
+    await record_trace_event(
+        task_id,
+        "ADVICE",
+        "RUNNING",
+        "正在结合识别结果与用户目标生成建议",
+    )
+    try:
+        result = await _generate_advice_impl(state)
+        await record_trace_event(
+            task_id,
+            "ADVICE",
+            "COMPLETED",
+            "营养建议已生成",
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return result
+    except Exception:
+        await record_trace_event(
+            task_id,
+            "ADVICE",
+            "FAILED",
+            "营养建议节点发生未处理异常",
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        raise
+
+
+async def _generate_advice_impl(state: "AgentState") -> dict:
     """
     Call the LLM to generate a personalised dietary advice report.
     """
