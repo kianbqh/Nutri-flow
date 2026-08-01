@@ -202,6 +202,10 @@ export const useFoodStore = defineStore('food', () => {
     error.value = null
   }
 
+  function setPreviewFile(file) {
+    setOwnedPreviewUrl(URL.createObjectURL(file))
+  }
+
   async function loadTaskImage(id) {
     try {
       const imageBlob = await getTaskImageBlob(id)
@@ -242,6 +246,7 @@ export const useFoodStore = defineStore('food', () => {
     stopPolling,
     applyAnalysisResult,
     loadTaskDetail,
+    setPreviewFile,
     reset,
   }
 })

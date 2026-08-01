@@ -21,8 +21,8 @@
         </div>
         <div class="metric-card">
           <span>当前状态</span>
-          <strong>{{ statusLabel }}</strong>
-          <p>{{ statusHint }}</p>
+          <strong>{{ statusSummary }}</strong>
+          <p v-if="statusHint">{{ statusHint }}</p>
         </div>
       </aside>
     </section>
@@ -35,13 +35,12 @@
         <button class="button button--secondary" type="button" @click="loadResult">重新加载</button>
       </div>
     </section>
-    <section v-else-if="foodStore.status !== 'COMPLETED'" class="surface-card empty-state">
-      <h3>结果暂未准备好</h3>
-      <p>{{ foodStore.error || `当前状态为“${statusLabel}”。页面会自动更新，完成后直接展示结果。` }}</p>
-      <span v-if="foodStore.status === 'PENDING'" class="live-wait"><i></i>后台分析中</span>
+    <section v-else-if="foodStore.status === 'FAILED'" class="surface-card empty-state empty-state--error">
+      <h3>分析失败</h3>
+      <p>{{ foodStore.error || '这次分析未成功完成，请稍后重试。' }}</p>
     </section>
     <AnalysisResultPanel
-      v-else
+      v-else-if="foodStore.status === 'COMPLETED'"
       :status="foodStore.status"
       :image-url="foodStore.previewUrl"
       :segmentation-preview-url="foodStore.segmentationPreviewUrl"
@@ -73,10 +72,15 @@ const statusLabel = computed(() => {
   if (normalized === 'FAILED') return '分析失败'
   return '等待加载'
 })
+const statusSummary = computed(() => (
+  foodStore.status === 'PENDING'
+    ? '分析中，通常约 10-20 秒完成。'
+    : statusLabel.value
+))
 const statusHint = computed(() => {
   const normalized = (foodStore.status || '').toString().toUpperCase()
   if (normalized === 'COMPLETED') return '结果已经可以查看。'
-  if (normalized === 'PENDING') return '任务仍在处理中，完成后页面会自动更新。'
+  if (normalized === 'PENDING') return ''
   if (normalized === 'FAILED') return '这次分析未成功完成，请稍后重试。'
   return '结果准备后会显示在这里。'
 })
@@ -121,19 +125,4 @@ async function loadResult() {
   color: var(--danger);
 }
 
-.live-wait {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--accent-strong);
-  font-weight: 700;
-}
-
-.live-wait i {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: currentColor;
-  box-shadow: 0 0 0 5px rgba(190, 104, 51, 0.12);
-}
 </style>

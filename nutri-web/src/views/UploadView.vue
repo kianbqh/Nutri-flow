@@ -66,7 +66,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useFoodStore } from '@/stores/food'
 import { getStoredWebSession } from '@/api/dietLog'
@@ -108,7 +108,7 @@ function setFile(file) {
 
   selectedFile.value = file
   foodStore.reset()
-  foodStore.previewUrl = URL.createObjectURL(file)
+  foodStore.setPreviewFile(file)
   clearFileInput()
 }
 
@@ -132,6 +132,12 @@ async function analyse() {
   const taskId = await foodStore.uploadAndAnalyse(selectedFile.value, mealType.value)
   if (taskId) router.push(`/results/${taskId}`)
 }
+
+onMounted(() => {
+  selectedFile.value = null
+  foodStore.reset()
+  clearFileInput()
+})
 
 onBeforeUnmount(() => foodStore.stopPolling())
 </script>

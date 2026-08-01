@@ -20,6 +20,20 @@
       </div>
     </section>
 
+    <section class="surface-card mask-stage">
+      <header class="section-head">
+        <div>
+          <h3 class="section-title">分割区域</h3>
+          <p>点击图中区域可查看对应食物。</p>
+        </div>
+      </header>
+      <MaskCanvas
+        :image-url="imageUrl"
+        :preview-image-url="segmentationPreviewUrl"
+        :items="detectedItems"
+      />
+    </section>
+
     <section class="surface-card">
       <header class="section-head">
         <h3 class="section-title">识别明细</h3>
@@ -74,20 +88,6 @@
       <div class="advice-main">
         <p>{{ adviceSections.main || '建议生成中，请稍候…' }}</p>
       </div>
-    </section>
-
-    <section class="surface-card mask-stage">
-      <header class="section-head">
-        <div>
-          <h3 class="section-title">分割区域</h3>
-          <p>点击图中区域可查看对应食物。</p>
-        </div>
-      </header>
-      <MaskCanvas
-        :image-url="imageUrl"
-        :preview-image-url="segmentationPreviewUrl"
-        :items="detectedItems"
-      />
     </section>
 
     <div v-if="backTo" class="page-actions result-actions">
