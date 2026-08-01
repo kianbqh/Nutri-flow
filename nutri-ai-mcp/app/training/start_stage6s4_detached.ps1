@@ -1,7 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$py = 'G:\GraduationProj_Nutri-flow\envs\test\python.exe'
-$root = 'G:\GraduationProj_Nutri-flow\Nutri-flow\nutri-ai-mcp'
+. (Join-Path $PSScriptRoot 'training_env.ps1')
 $psExe = "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
 $serviceLogDir = "$root\weights_by_category\foodseg103\service_logs"
 New-Item -ItemType Directory -Path $serviceLogDir -Force | Out-Null

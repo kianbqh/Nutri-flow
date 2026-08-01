@@ -1,7 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$py = 'G:\GraduationProj_Nutri-flow\envs\test\python.exe'
-$root = 'G:\GraduationProj_Nutri-flow\Nutri-flow\nutri-ai-mcp'
+. (Join-Path $PSScriptRoot 'training_env.ps1')
 $trainDir = "$root\app\training"
 $dataset = "$root\data\FoodSeg103_hf"
 $outRoot = "$root\weights_by_category\foodseg103"

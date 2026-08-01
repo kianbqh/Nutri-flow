@@ -62,6 +62,7 @@ nutri-ai-mcp/data/*
 !nutri-ai-mcp/data/smoke/
 !nutri-ai-mcp/data/smoke/**
 nutri-ai-mcp/weights_by_category/
+nutri-ai-mcp/app/training/*_log.txt
 
 # Private thesis drafts and local document-generation artifacts
 docs/毕业论文/

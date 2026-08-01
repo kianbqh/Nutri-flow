@@ -8,9 +8,8 @@ function Stop-AgentPythonProcesses {
     $py = Get-CimInstance Win32_Process -Filter "Name='python.exe'"
     foreach ($proc in $py) {
         $cmd = [string]$proc.CommandLine
-        $looksLikeNewManagedAgent = $cmd -like "*nutri-agent*" -and $cmd -like "*main.py*"
-        $looksLikeLegacyManagedAgent = $cmd -eq '"G:\GraduationProj_Nutri-flow\envs\test\python.exe" main.py'
-        if ($looksLikeNewManagedAgent -or $looksLikeLegacyManagedAgent) {
+        $looksLikeManagedAgent = $cmd -like "*nutri-agent*" -and $cmd -like "*main.py*"
+        if ($looksLikeManagedAgent) {
             Stop-Process -Id ([int]$proc.ProcessId) -Force -ErrorAction SilentlyContinue
             Write-Output "[stop] agent child PID=$($proc.ProcessId)"
         }

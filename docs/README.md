@@ -6,16 +6,19 @@ development logs as supporting evidence.
 
 ## Recommended Reading Order
 
-1. `软件工程文档包/`
+1. `PROJECT_PLAN.zh-CN.md`
+   Product scope, priorities, delivery milestones, and acceptance criteria.
+
+2. `软件工程文档包/`
    Stable software-engineering documents: requirements, architecture, database
    design, API contracts, UI flow, test plan, agent workflow, model baseline,
    and release notes.
 
-2. `开发与优化记录/`
+3. `开发与优化记录/`
    Chronological engineering and experiment logs. These files are useful for
    tracing why a decision was made, but they are intentionally more verbose.
 
-3. `毕业论文/`
+4. `毕业论文/`
    Thesis drafts, chapter material, experiment summaries, and reference notes.
 
 ## Current Showcase Baseline

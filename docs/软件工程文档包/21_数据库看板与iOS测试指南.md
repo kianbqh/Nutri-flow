@@ -28,9 +28,9 @@
 在项目根目录的 PowerShell 中执行：
 
 ```powershell
-ssh -i "..\.ssh\nutriflow-do-ed25519" `
-  -o UserKnownHostsFile="..\.ssh\known_hosts" `
-  root@157.230.38.184
+ssh -i "<PATH_TO_DEPLOYMENT_KEY>" `
+  -o UserKnownHostsFile="<PATH_TO_KNOWN_HOSTS>" `
+  <SSH_USER>@<SERVER_IP>
 ```
 
 登录后：
@@ -96,7 +96,7 @@ ORDER BY last_analysis_at DESC;
 
 可使用 DBeaver 的 SSH Tunnel：
 
-1. SSH Host 填 `157.230.38.184`，用户填 `root`，私钥选择上级目录 `.ssh/nutriflow-do-ed25519`。
+1. SSH Host 填服务器地址，用户填部署账号，私钥选择本机的部署密钥。
 2. 在服务器执行 `docker inspect nutri-flow-mysql-1 --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'` 获取 MySQL 容器 IP。
 3. DBeaver 数据库 Host 填该容器 IP，Port 填 `3306`。
 4. 数据库名、用户名和密码在服务器 `/opt/nutri-flow/.env.prod` 中查看，禁止把该文件提交到 Git。
@@ -115,7 +115,7 @@ https://nutriflow.sunnxz.dev/dashboard
 看板使用独立管理码，不复用公开测试站的访问授权码。管理码只保存在当前浏览器的 `sessionStorage`，关闭标签页后重新输入。本机管理码文件位于：
 
 ```text
-G:\GraduationProj_Nutri-flow\Nutri-flow\.runtime\dashboard-admin-key.txt
+<PROJECT_ROOT>\.runtime\dashboard-admin-key.txt
 ```
 
 看板只返回聚合数据：
@@ -176,9 +176,9 @@ ls -lh backups
 下载到 G 盘：
 
 ```powershell
-scp -i "..\.ssh\nutriflow-do-ed25519" `
-  -o UserKnownHostsFile="..\.ssh\known_hosts" `
-  "root@157.230.38.184:/opt/nutri-flow/backups/nutri_db_*.sql" `
+scp -i "<PATH_TO_DEPLOYMENT_KEY>" `
+  -o UserKnownHostsFile="<PATH_TO_KNOWN_HOSTS>" `
+  "<SSH_USER>@<SERVER_IP>:/opt/nutri-flow/backups/nutri_db_*.sql" `
   ".runtime\backups\"
 ```
 

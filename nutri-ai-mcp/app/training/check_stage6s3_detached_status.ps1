@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$root = 'G:\GraduationProj_Nutri-flow\Nutri-flow\nutri-ai-mcp'
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $masterLog = "$root\weights_by_category\foodseg103\stage6s3_master.log"
 $serviceLogDir = "$root\weights_by_category\foodseg103\service_logs"
 

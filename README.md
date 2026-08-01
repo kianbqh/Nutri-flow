@@ -113,8 +113,9 @@ Managed logs are written to `.runtime/logs`.
 ## Protected Public Deployment
 
 The repository includes a production-oriented Compose profile with multi-stage
-application images, Caddy-managed HTTPS, a Basic Auth staging gate, private
-infrastructure networking, model fail-fast checks, and persistent volumes.
+application images, Caddy-managed HTTPS, an invitation-code access gate,
+private infrastructure networking, model fail-fast checks, and persistent
+volumes.
 
 See [docs/PUBLIC_DEPLOYMENT.md](docs/PUBLIC_DEPLOYMENT.md) for the server,
 secrets, model-transfer, startup, verification, backup, and rollback steps.
@@ -147,3 +148,8 @@ cd nutri-mobile
   and authenticated API access.
 - Model weights, datasets, local toolchains, caches, and runtime logs are not
   committed to Git.
+- This repository contains an educational demo, not a medical device. Do not
+  use it to make clinical decisions or store real health data without a full
+  privacy, security, and compliance review.
+- See [SECURITY.md](SECURITY.md) before exposing a deployment to untrusted
+  users.

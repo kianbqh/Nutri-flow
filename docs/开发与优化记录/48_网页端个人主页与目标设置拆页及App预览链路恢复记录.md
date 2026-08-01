@@ -34,7 +34,7 @@
 
 1. frontend-web-supervisor 持续检测到 flutter run 退出并反复重启。
 2. 日志中出现 FileSystemException: writeFrom failed。
-3. 失败文件位于 C:\Users\Sunnxz\AppData\Local\Temp\flutter_tools* 目录下的 app.dill。
+3. 失败文件位于 `%TEMP%\flutter_tools*` 目录下的 `app.dill`。
 4. 错误号为 errno = 112，对应磁盘空间不足。
 
 进一步清理 Windows 临时目录后，可用空间由约 0.08GB 恢复到约 3.91GB，说明这次掉线的根因不是推理服务、业务服务或 RabbitMQ，而是本地 Flutter 编译缓存写入失败。
@@ -84,7 +84,7 @@
 
 处理内容：
 
-1. 清理 C:\Users\Sunnxz\AppData\Local\Temp 下的 flutter_tools 临时目录。
+1. 清理 `%TEMP%` 下的 `flutter_tools` 临时目录。
 2. 重新拉起 57717 对应的 Flutter web 预览链路。
 3. 复查端口监听状态，确认页面已恢复可访问。
 
