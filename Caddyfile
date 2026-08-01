@@ -91,6 +91,11 @@
 
 	log {
 		output stdout
-		format console
+		format filter {
+			request>headers>X-Nutri-Access-Code delete
+			request>headers>X-Nutri-Admin-Key delete
+			request>headers>Cookie delete
+			wrap console
+		}
 	}
 }

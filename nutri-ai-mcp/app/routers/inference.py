@@ -11,6 +11,7 @@ import base64
 import binascii
 import io
 import logging
+import time
 
 import httpx
 import numpy as np
@@ -21,7 +22,7 @@ from app.models import SegmentationRequest, SegmentationResponse, FoodItem
 from app.inference import run_inference
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 
 _DOWNLOAD_TIMEOUT = httpx.Timeout(20.0, connect=5.0, read=20.0, write=20.0)
 _DOWNLOAD_ATTEMPTS = 3
@@ -63,6 +64,9 @@ async def segment_meal_image(request: SegmentationRequest) -> SegmentationRespon
     Download the meal image from the provided pre-signed URL and run
     Swin Transformer food-instance segmentation.
     """
+    started_at = time.perf_counter()
+    logger.info("Inference started task_id=%s", request.task_id)
+
     # 1. Resolve image bytes from the inline payload first, then from OSS URL.
     image_bytes = await _resolve_image_bytes(request)
 
@@ -88,6 +92,15 @@ async def segment_meal_image(request: SegmentationRequest) -> SegmentationRespon
     food_items = [FoodItem(**det) for det in raw_detections]
     total_calories = sum(
         (item.nutrition.calories_kcal if item.nutrition else 0.0) for item in food_items
+    )
+
+    logger.info(
+        "Inference completed task_id=%s duration_ms=%.1f inference_ms=%.1f items=%d model=%s",
+        request.task_id,
+        (time.perf_counter() - started_at) * 1000,
+        inference_ms,
+        len(food_items),
+        model_version,
     )
 
     return SegmentationResponse(

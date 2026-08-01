@@ -14,6 +14,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
@@ -269,6 +270,7 @@ async def call_mcp_segmentation(state: "AgentState") -> dict:
     workflow_trace = list(state.get("workflow_trace") or [])
 
     logger.info("Calling segmentation service for task_id=%s", task_id)
+    started_at = time.perf_counter()
 
     payload = {
         "task_id": task_id,
@@ -289,7 +291,10 @@ async def call_mcp_segmentation(state: "AgentState") -> dict:
                 resp = await client.post(
                     f"{_settings.mcp_server_url}/v1/segment",
                     json=payload,
-                    headers={"Content-Type": "application/json"},
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-Nutri-Task-Id": task_id,
+                    },
                 )
                 resp.raise_for_status()
                 content = resp.json()
@@ -301,6 +306,14 @@ async def call_mcp_segmentation(state: "AgentState") -> dict:
                     "segmentation_preview_png_base64": content.get("segmentation_preview_png_base64"),
                     "model_version": content.get("model_version", "unknown"),
                 }
+                logger.info(
+                    "Segmentation completed task_id=%s duration_ms=%.1f inference_ms=%.1f items=%d model=%s",
+                    task_id,
+                    (time.perf_counter() - started_at) * 1000,
+                    _as_float(content.get("inference_time_ms"), 0.0),
+                    len(content.get("detected_items", []) or []),
+                    content.get("model_version", "unknown"),
+                )
                 break
         except Exception as exc:
             last_exc = exc

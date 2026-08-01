@@ -15,16 +15,10 @@
 
     <div v-else class="app-shell">
       <header class="shell-header">
-        <section class="brand-block">
-          <div class="brand-kicker">
-            <span class="brand-kicker__dot"></span>
-            Nutri-Flow
-          </div>
-          <div class="brand-copy">
-            <h1>灵动食迹</h1>
-            <p>帮助你记录每一餐、查看热量估算，并把历史变化和个性化建议放到同一个清晰界面里。</p>
-          </div>
-        </section>
+        <RouterLink to="/" class="shell-brand" aria-label="灵动食迹首页">
+          <span class="shell-brand__mark">N</span>
+          <span><strong>灵动食迹</strong><small>Nutri-Flow</small></span>
+        </RouterLink>
 
         <nav class="shell-nav" aria-label="主导航">
           <RouterLink
@@ -35,7 +29,6 @@
             :class="{ 'is-active': route.path === item.to }"
           >
             <span class="shell-nav__label">{{ item.label }}</span>
-            <span class="shell-nav__hint">{{ item.hint }}</span>
           </RouterLink>
         </nav>
       </header>
@@ -53,11 +46,11 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 const route = useRoute()
 
 const navItems = [
-  { to: '/', label: '首页', hint: '开始使用' },
-  { to: '/upload', label: '上传分析', hint: '提交餐图' },
-  { to: '/history', label: '历史记录', hint: '回看数据' },
-  { to: '/profile', label: '个人主页', hint: '账号与昵称' },
-  { to: '/goals', label: '目标设置', hint: '目标与限制' },
+  { to: '/', label: '首页' },
+  { to: '/upload', label: '分析' },
+  { to: '/history', label: '历史' },
+  { to: '/goals', label: '目标' },
+  { to: '/profile', label: '我的' },
 ]
 </script>
 
@@ -91,40 +84,19 @@ html,
 body,
 #app {
   min-height: 100%;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 body {
   font-family: 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   color: var(--text);
-  background:
-    radial-gradient(circle at top right, rgba(244, 200, 168, 0.4), transparent 24%),
-    radial-gradient(circle at left 30%, rgba(221, 170, 131, 0.18), transparent 22%),
-    linear-gradient(180deg, #fcf7f1 0%, #f7efe7 48%, #f8f1ea 100%);
+  background: #f7f6f3;
 }
 
 body::before,
 body::after {
-  content: '';
-  position: fixed;
-  z-index: -1;
-  border-radius: 999px;
-  filter: blur(12px);
-}
-
-body::before {
-  top: 72px;
-  right: -60px;
-  width: 220px;
-  height: 220px;
-  background: radial-gradient(circle, rgba(255, 223, 196, 0.9), rgba(255, 223, 196, 0));
-}
-
-body::after {
-  left: -70px;
-  bottom: 80px;
-  width: 240px;
-  height: 240px;
-  background: radial-gradient(circle, rgba(233, 164, 112, 0.22), rgba(233, 164, 112, 0));
+  display: none;
 }
 
 a {
@@ -144,7 +116,7 @@ select,
 textarea {
   width: 100%;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 8px;
   padding: 14px 16px;
   color: var(--text);
   background: rgba(255, 255, 255, 0.92);
@@ -223,99 +195,63 @@ textarea:focus {
 }
 
 .shell-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(360px, 0.95fr);
-  gap: 20px;
-  align-items: stretch;
-  margin-bottom: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 6px 18px rgba(50, 44, 39, 0.05);
 }
 
-.brand-block {
-  position: relative;
-  overflow: hidden;
-  border-radius: 32px;
-  padding: 26px 28px;
-  color: #fffaf6;
-  background: linear-gradient(135deg, rgba(124, 71, 35, 0.98), rgba(214, 134, 73, 0.94) 58%, rgba(243, 206, 174, 0.92));
-  box-shadow: 0 28px 56px rgba(139, 82, 43, 0.2);
-}
-
-.brand-block::after {
-  content: '';
-  position: absolute;
-  width: 240px;
-  height: 240px;
-  right: -70px;
-  bottom: -120px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 245, 236, 0.66), rgba(255, 245, 236, 0));
-}
-
-.brand-kicker {
-  display: inline-flex;
+.shell-brand {
+  display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 250, 245, 0.94);
-  font-size: 0.83rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  flex: 0 0 auto;
 }
 
-.brand-kicker__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #fff6ee;
-  box-shadow: 0 0 0 6px rgba(255, 246, 238, 0.14);
+.shell-brand__mark {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  font-weight: 900;
 }
 
-.brand-copy {
-  position: relative;
-  z-index: 1;
-  margin-top: 18px;
+.shell-brand > span:last-child {
+  display: grid;
+  gap: 1px;
 }
 
-.brand-copy h1 {
-  font-size: clamp(2rem, 4vw, 3.35rem);
-  line-height: 1.05;
-  letter-spacing: -0.04em;
-  font-weight: 800;
-}
-
-.brand-copy p {
-  max-width: 640px;
-  margin-top: 12px;
-  line-height: 1.7;
-  color: rgba(255, 249, 244, 0.88);
+.shell-brand strong {
   font-size: 1rem;
 }
 
+.shell-brand small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
 .shell-nav {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  padding: 16px;
-  border-radius: 32px;
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid rgba(255, 255, 255, 0.58);
-  backdrop-filter: blur(18px);
-  box-shadow: var(--shadow-soft);
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .shell-nav__link {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-height: 96px;
-  border-radius: 24px;
-  padding: 16px 18px;
-  border: 1px solid rgba(234, 215, 202, 0.9);
-  background: rgba(255, 252, 248, 0.85);
+  display: grid;
+  place-items: center;
+  min-height: 40px;
+  border-radius: 6px;
+  padding: 0 13px;
+  border: 1px solid transparent;
   transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
@@ -326,21 +262,15 @@ textarea:focus {
 }
 
 .shell-nav__link.is-active {
-  background: linear-gradient(180deg, rgba(255, 244, 233, 0.96), rgba(255, 255, 255, 0.96));
-  border-color: rgba(155, 91, 46, 0.42);
-  box-shadow: 0 16px 32px rgba(139, 82, 43, 0.12);
+  background: var(--accent-wash);
+  border-color: rgba(155, 91, 46, 0.28);
+  box-shadow: none;
 }
 
 .shell-nav__label {
   font-size: 1rem;
   font-weight: 800;
   color: var(--text);
-}
-
-.shell-nav__hint {
-  color: var(--muted);
-  line-height: 1.45;
-  font-size: 0.9rem;
 }
 
 .shell-main {
@@ -362,7 +292,7 @@ textarea:focus {
   grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
   gap: 20px;
   padding: clamp(24px, 3vw, 36px);
-  border-radius: 32px;
+  border-radius: 8px;
   border: 1px solid rgba(234, 215, 202, 0.9);
   background: linear-gradient(135deg, rgba(255, 246, 237, 0.96), rgba(255, 255, 255, 0.88) 62%, rgba(246, 229, 214, 0.92));
   box-shadow: var(--shadow);
@@ -414,7 +344,7 @@ textarea:focus {
 .surface-card {
   min-width: 0;
   padding: 24px;
-  border-radius: 28px;
+  border-radius: 8px;
   background: var(--surface-strong);
   border: 1px solid rgba(234, 215, 202, 0.92);
   box-shadow: var(--shadow-soft);
@@ -446,7 +376,7 @@ textarea:focus {
 
 .metric-card {
   padding: 18px 20px;
-  border-radius: 22px;
+  border-radius: 8px;
   border: 1px solid rgba(238, 224, 213, 0.95);
   background: linear-gradient(180deg, rgba(255, 249, 242, 0.98), rgba(255, 255, 255, 0.98));
 }
@@ -569,23 +499,38 @@ textarea:focus {
 
 @media (max-width: 720px) {
   #app-root {
-    padding: 18px 14px 28px;
+    padding: 12px 12px 82px;
   }
 
-  .brand-block,
-  .shell-nav,
   .page-hero,
   .surface-card {
-    border-radius: 24px;
+    border-radius: 8px;
+  }
+
+  .shell-header {
+    padding: 8px 10px;
   }
 
   .shell-nav {
-    grid-template-columns: 1fr 1fr;
+    position: fixed;
+    z-index: 20;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow: 0 8px 24px rgba(50, 44, 39, 0.12);
   }
 
   .shell-nav__link {
-    min-height: 82px;
-    padding: 14px;
+    min-height: 42px;
+    min-width: 0;
+    padding: 0 6px;
+    font-size: 0.78rem;
   }
 
   .page-hero__title {
@@ -594,17 +539,7 @@ textarea:focus {
 }
 
 @media (max-width: 560px) {
-  .shell-nav {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .shell-nav__link {
-    min-height: 58px;
-    padding: 10px 8px;
-    text-align: center;
-  }
-
-  .shell-nav__hint {
+  .shell-brand small {
     display: none;
   }
 

@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../utils/navigation_utils.dart';
 import '../widgets/app_chrome.dart';
-import '../widgets/status_banner.dart';
 import 'result_page.dart';
 
 class ProcessingPage extends StatefulWidget {
@@ -33,6 +32,7 @@ class _ProcessingPageState extends State<ProcessingPage> {
   String _status = 'PENDING';
   String? _errorMessage;
   bool _finished = false;
+  bool _pollInFlight = false;
 
   @override
   void initState() {
@@ -54,7 +54,8 @@ class _ProcessingPageState extends State<ProcessingPage> {
     _errorMessage = null;
 
     _timer = Timer.periodic(_pollInterval, (timer) async {
-      if (!mounted || _finished) return;
+      if (!mounted || _finished || _pollInFlight) return;
+      _pollInFlight = true;
 
       _elapsed += _pollInterval.inSeconds;
       if (_elapsed >= _timeoutSeconds) {
@@ -67,7 +68,9 @@ class _ProcessingPageState extends State<ProcessingPage> {
         return;
       }
 
-      if (_elapsed >= _slowWarningSeconds && _status == 'PENDING' && _errorMessage == null) {
+      if (_elapsed >= _slowWarningSeconds &&
+          _status == 'PENDING' &&
+          _errorMessage == null) {
         setState(() {
           _errorMessage = '图片较复杂时可能会稍久一些，系统仍在继续计算中。';
         });
@@ -109,6 +112,8 @@ class _ProcessingPageState extends State<ProcessingPage> {
           _finished = true;
         });
         timer.cancel();
+      } finally {
+        _pollInFlight = false;
       }
     });
   }
@@ -152,12 +157,6 @@ class _ProcessingPageState extends State<ProcessingPage> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
           child: Column(
             children: [
-              const AppHeroCard(
-                icon: Icons.auto_awesome_rounded,
-                title: '正在分析这顿餐食',
-                subtitle: '系统正在识别餐食区域、估算热量并生成建议，通常约 10-20 秒完成。',
-              ),
-              const SizedBox(height: 18),
               AppSurfaceCard(
                 child: Column(
                   children: [
@@ -169,17 +168,32 @@ class _ProcessingPageState extends State<ProcessingPage> {
                     const SizedBox(height: 20),
                     Text(
                       _statusText(),
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w700),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      _progressHint(),
-                      style: const TextStyle(color: Color(0xFF7A6A5D), height: 1.5),
+                      '${_progressHint()}  已等待 ${_elapsed}s',
+                      style: const TextStyle(
+                          color: Color(0xFF7A6A5D), height: 1.5),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 12),
-                    StatusBanner(status: _status, message: _errorMessage),
+                    SelectableText(
+                      '任务 ${widget.taskId}',
+                      style: const TextStyle(
+                          color: Color(0xFF9A8A7D), fontSize: 12),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (_errorMessage != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _errorMessage!,
+                        style: const TextStyle(color: Colors.red, height: 1.45),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                     const SizedBox(height: 18),
                     if (canRetry)
                       FilledButton.icon(
@@ -189,7 +203,8 @@ class _ProcessingPageState extends State<ProcessingPage> {
                       ),
                     if (canRetry) const SizedBox(height: 10),
                     OutlinedButton(
-                      onPressed: () => backOrGo(context, fallbackRoute: RoutePaths.home),
+                      onPressed: () =>
+                          backOrGo(context, fallbackRoute: RoutePaths.home),
                       child: const Text('返回首页'),
                     ),
                   ],

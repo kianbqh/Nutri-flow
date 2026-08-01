@@ -7,35 +7,7 @@ class AppSoftBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        const Positioned(
-          top: -36,
-          right: -28,
-          child: _AppBackdropOrb(
-            size: 180,
-            colors: [Color(0xFFFFD7BA), Color(0x00FFD7BA)],
-          ),
-        ),
-        const Positioned(
-          top: 280,
-          left: -70,
-          child: _AppBackdropOrb(
-            size: 170,
-            colors: [Color(0xFFF8C29E), Color(0x00F8C29E)],
-          ),
-        ),
-        const Positioned(
-          bottom: -82,
-          right: -52,
-          child: _AppBackdropOrb(
-            size: 210,
-            colors: [Color(0xFFFFE7D2), Color(0x00FFE7D2)],
-          ),
-        ),
-        child,
-      ],
-    );
+    return child;
   }
 }
 
@@ -45,7 +17,7 @@ class AppSurfaceCard extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.all(18),
     this.color = Colors.white,
-    this.borderRadius = 24,
+    this.borderRadius = 8,
   });
 
   final Widget child;
@@ -61,13 +33,7 @@ class AppSurfaceCard extends StatelessWidget {
         color: color,
         borderRadius: BorderRadius.circular(borderRadius),
         border: Border.all(color: const Color(0xFFF1DDD0)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0C3D1C0A),
-            blurRadius: 18,
-            offset: Offset(0, 10),
-          ),
-        ],
+        boxShadow: const [],
       ),
       child: child,
     );
@@ -97,12 +63,8 @@ class AppHeroCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF8B4D2A), Color(0xFFD78649), Color(0xFFF1C9A4)],
-        ),
+        borderRadius: BorderRadius.circular(8),
+        color: const Color(0xFF934F27),
         boxShadow: const [
           BoxShadow(
             color: Color(0x1F8B4D2A),
@@ -191,7 +153,8 @@ class AppGlassChip extends StatelessWidget {
 }
 
 class AppSectionHeading extends StatelessWidget {
-  const AppSectionHeading({super.key, required this.title, required this.subtitle});
+  const AppSectionHeading(
+      {super.key, required this.title, required this.subtitle});
 
   final String title;
   final String subtitle;
@@ -234,9 +197,9 @@ class AppHintStrip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withAlpha(34),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withAlpha(44)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFD8E2D7)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,48 +208,24 @@ class AppHintStrip extends StatelessWidget {
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: Colors.white.withAlpha(30),
-              borderRadius: BorderRadius.circular(12),
+              color: const Color(0xFFEAF1E9),
+              borderRadius: BorderRadius.circular(6),
             ),
             alignment: Alignment.center,
-            child: Icon(icon, color: Colors.white, size: 18),
+            child: Icon(icon, color: const Color(0xFF5F795F), size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               text,
-              style: TextStyle(
-                color: Colors.white.withAlpha(235),
+              style: const TextStyle(
+                color: Color(0xFF4E4A46),
                 fontSize: 13.5,
                 height: 1.5,
               ),
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _AppBackdropOrb extends StatelessWidget {
-  const _AppBackdropOrb({required this.size, required this.colors});
-
-  final double size;
-  final List<Color> colors;
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: colors,
-            stops: const [0.2, 1],
-          ),
-        ),
       ),
     );
   }

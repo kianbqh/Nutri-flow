@@ -1,8 +1,15 @@
 name: nutri-flow
 
+x-json-logging: &json-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 x-app-defaults: &app-defaults
   restart: unless-stopped
   init: true
+  logging: *json-logging
   security_opt:
     - no-new-privileges:true
   networks:
@@ -145,6 +152,7 @@ services:
   mysql:
     image: ${MYSQL_IMAGE:-mysql:8.0}
     restart: unless-stopped
+    logging: *json-logging
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
@@ -165,6 +173,7 @@ services:
   redis:
     image: ${REDIS_IMAGE:-redis:7-alpine}
     restart: unless-stopped
+    logging: *json-logging
     environment:
       NUTRI_REDIS_PASSWORD: ${NUTRI_REDIS_PASSWORD}
     command:
@@ -184,6 +193,7 @@ services:
   rabbitmq:
     image: ${RABBITMQ_IMAGE:-rabbitmq:3-management-alpine}
     restart: unless-stopped
+    logging: *json-logging
     environment:
       RABBITMQ_DEFAULT_USER: ${NUTRI_RABBITMQ_USERNAME}
       RABBITMQ_DEFAULT_PASS: ${NUTRI_RABBITMQ_PASSWORD}
@@ -201,6 +211,7 @@ services:
   minio:
     image: ${MINIO_IMAGE:-minio/minio:latest}
     restart: unless-stopped
+    logging: *json-logging
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -219,6 +230,7 @@ services:
   minio-init:
     image: ${MINIO_MC_IMAGE:-minio/mc:latest}
     restart: "no"
+    logging: *json-logging
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
@@ -241,6 +253,7 @@ services:
   chroma:
     image: ${CHROMA_IMAGE:-chromadb/chroma:latest}
     restart: unless-stopped
+    logging: *json-logging
     volumes:
       - chroma_data:/data
     healthcheck:
