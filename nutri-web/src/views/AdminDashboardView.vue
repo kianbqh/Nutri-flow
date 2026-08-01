@@ -38,6 +38,11 @@
 
       <p v-if="error" class="error-text dashboard-error">{{ error }}</p>
 
+      <nav class="dashboard-section-tabs" aria-label="看板区域">
+        <a href="#request-trace">请求追踪</a>
+        <a href="#database-records">数据库</a>
+      </nav>
+
       <section class="metric-grid" aria-label="核心指标">
         <article v-for="metric in metrics" :key="metric.label" class="metric-tile">
           <span>{{ metric.label }}</span>
@@ -46,11 +51,11 @@
         </article>
       </section>
 
-      <section class="trace-panel" aria-labelledby="trace-title">
+      <section id="request-trace" class="trace-panel" aria-labelledby="trace-title">
         <header class="trace-header">
           <div>
-            <span class="section-kicker">实时任务定位</span>
-            <h3 id="trace-title">分析全链路</h3>
+            <span class="section-kicker">全链路诊断</span>
+            <h3 id="trace-title">请求追踪工作流</h3>
           </div>
           <span class="live-indicator"><i></i>自动更新</span>
         </header>
@@ -58,7 +63,8 @@
         <div class="trace-controls">
           <label>
             <span>最近任务</span>
-            <select v-model="selectedTaskId" @change="loadTaskTrace()">
+            <select v-model="selectedTaskId" :disabled="!recentTasks.length" @change="loadTaskTrace()">
+              <option v-if="!recentTasks.length" value="" disabled>暂无可追踪任务</option>
               <option v-for="task in recentTasks" :key="task.taskId" :value="task.taskId">
                 {{ shortTaskId(task.taskId) }} · {{ mealLabel(task.mealType) }} · {{ statusLabel(task.status) }}
               </option>
@@ -75,6 +81,9 @@
 
         <p v-if="traceError" class="error-text trace-error">{{ traceError }}</p>
         <div v-if="traceLoading && !taskTrace" class="trace-empty">正在读取任务链路…</div>
+        <div v-else-if="!traceError && !taskTrace && !recentTasks.length" class="trace-empty">
+          暂无可追踪任务，提交一次图片分析后会自动显示完整链路。
+        </div>
 
         <template v-else-if="taskTrace">
           <div class="trace-summary">
@@ -211,7 +220,7 @@
         </div>
       </section>
 
-      <section class="records-panel">
+      <section id="database-records" class="records-panel">
         <header class="records-header">
           <div>
             <span class="section-kicker">生产数据库</span>
@@ -772,6 +781,33 @@ button:disabled {
   margin: 0 0 12px;
 }
 
+.dashboard-section-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin-bottom: 12px;
+  padding: 3px;
+  border: 1px solid #d9e0db;
+  border-radius: 6px;
+  background: #f3f6f4;
+}
+
+.dashboard-section-tabs a {
+  min-width: 96px;
+  padding: 8px 14px;
+  border-radius: 4px;
+  color: #526158;
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.dashboard-section-tabs a:hover,
+.dashboard-section-tabs a:focus-visible {
+  color: #fff;
+  background: #2f694d;
+  outline: none;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -815,6 +851,10 @@ button:disabled {
   border: 1px solid #d9e0db;
   border-radius: 8px;
   background: #fff;
+  scroll-margin-top: 18px;
+}
+
+#database-records {
   scroll-margin-top: 18px;
 }
 
