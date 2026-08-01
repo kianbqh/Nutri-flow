@@ -3,30 +3,83 @@
 	admin off
 }
 
-{$NUTRI_DOMAIN} {
+{$NUTRI_SITE_ADDRESS} {
 	encode zstd gzip
 
 	request_body {
 		max_size 15MB
 	}
 
-	basic_auth {
-		{$NUTRI_BASIC_AUTH_USER} {$NUTRI_BASIC_AUTH_HASH}
-	}
+	route {
+		@unlock {
+			method POST
+			path /_access/unlock
+			header X-Nutri-Access-Code {$NUTRI_ACCESS_CODE}
+		}
+		handle @unlock {
+			header Set-Cookie "nutri_access={$NUTRI_ACCESS_SESSION}; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Strict"
+			header Cache-Control "no-store"
+			header Content-Type application/json
+			respond `{"ok":true}` 200
+		}
 
-	@api path /api/*
-	handle @api {
-		reverse_proxy business:8080 {
-			transport http {
-				response_header_timeout 360s
+		handle /_access/unlock {
+			header Content-Type application/json
+			respond `{"error":"INVALID_ACCESS_CODE"}` 401
+		}
+
+		handle /_access/logout {
+			header Set-Cookie "nutri_access=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict"
+			redir / 303
+		}
+
+		@apiWithCode {
+			path /api/*
+			header X-Nutri-Access-Code {$NUTRI_ACCESS_CODE}
+		}
+		@internalTrace path /api/v1/internal/task-traces/*
+		handle @internalTrace {
+			respond 404
+		}
+		handle @apiWithCode {
+			reverse_proxy business:8080 {
+				transport http {
+					response_header_timeout 360s
+				}
 			}
 		}
-	}
 
-	handle {
-		root * /srv
-		try_files {path} /index.html
-		file_server
+		@session header_regexp Cookie "nutri_access={$NUTRI_ACCESS_SESSION}"
+		@apiWithSession {
+			path /api/*
+			header_regexp Cookie "nutri_access={$NUTRI_ACCESS_SESSION}"
+		}
+		handle @apiWithSession {
+			reverse_proxy business:8080 {
+				transport http {
+					response_header_timeout 360s
+				}
+			}
+		}
+
+		@api path /api/*
+		handle @api {
+			header Content-Type application/json
+			respond `{"error":"ACCESS_CODE_REQUIRED"}` 401
+		}
+
+		handle @session {
+			root * /srv
+			try_files {path} /index.html
+			file_server
+		}
+
+		handle {
+			header Cache-Control "no-store"
+			root * /access
+			try_files {path} /index.html
+			file_server
+		}
 	}
 
 	@assets path /assets/*
@@ -36,12 +89,18 @@
 		Referrer-Policy "strict-origin-when-cross-origin"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
-		Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+		Permissions-Policy "camera=(self), microphone=(self), geolocation=()"
 		Strict-Transport-Security "max-age=31536000"
 	}
 
 	log {
 		output stdout
-		format console
+		format filter {
+			request>headers>X-Nutri-Access-Code delete
+			request>headers>X-Nutri-Admin-Key delete
+			request>headers>X-Nutri-Trace-Key delete
+			request>headers>Cookie delete
+			wrap console
+		}
 	}
 }

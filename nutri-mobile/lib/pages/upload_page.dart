@@ -34,13 +34,15 @@ class _UploadPageState extends State<UploadPage> {
   }
 
   Future<void> _pickFromCamera() async {
-    final file = await _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    final file =
+        await _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
     if (file == null) return;
     await _setPicked(file);
   }
 
   Future<void> _pickFromGallery() async {
-    final file = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    final file =
+        await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
     if (file == null) return;
     await _setPicked(file);
   }
@@ -111,37 +113,33 @@ class _UploadPageState extends State<UploadPage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
           children: [
-            const AppHeroCard(
-              icon: Icons.camera_alt_rounded,
-              title: '上传一张清晰餐图',
-              subtitle: '尽量拍完整餐盘，减少遮挡和过曝，识别结果会更稳定。',
-              footer: AppHintStrip(
-                icon: Icons.photo_outlined,
-                text: '拍照和相册都可以，选好餐次后再开始分析。',
-              ),
+            const Text(
+              '上传餐食照片',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 10),
+            const AppHintStrip(
+              icon: Icons.photo_outlined,
+              text: '尽量拍完整餐盘，减少遮挡和强反光。',
+            ),
+            const SizedBox(height: 12),
             AppSurfaceCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const AppSectionHeading(
-                    title: '餐图预览',
-                    subtitle: '确认图片内容清晰，再提交识别。',
-                  ),
-                  const SizedBox(height: 16),
                   if (_previewBytes == null)
                     Container(
                       height: 240,
                       decoration: BoxDecoration(
                         color: const Color(0xFFFFF3EA),
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: const Color(0xFFF0D2BD)),
                       ),
                       child: const Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.add_a_photo_rounded, size: 42, color: Color(0xFFB86A3D)),
+                          Icon(Icons.add_a_photo_rounded,
+                              size: 42, color: Color(0xFFB86A3D)),
                           SizedBox(height: 10),
                           Text('请选择或拍摄一张餐食照片'),
                         ],
@@ -149,8 +147,9 @@ class _UploadPageState extends State<UploadPage> {
                     )
                   else
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: Image.memory(_previewBytes!, height: 240, fit: BoxFit.cover),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.memory(_previewBytes!,
+                          height: 240, fit: BoxFit.cover),
                     ),
                   const SizedBox(height: 14),
                   Row(
@@ -188,11 +187,6 @@ class _UploadPageState extends State<UploadPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const AppSectionHeading(
-                    title: '提交分析',
-                    subtitle: '选择餐次后开始估算热量与生成建议。',
-                  ),
-                  const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     initialValue: _mealType,
                     decoration: const InputDecoration(labelText: '餐次'),

@@ -29,6 +29,9 @@ export const useFoodStore = defineStore('food', () => {
   /** Internal polling timer handle */
   let _pollTimer = null
   let _pollStart = 0
+  let _pollGeneration = 0
+  let _pollInFlight = false
+  let _visibilityListener = null
   let _ownedPreviewUrl = null
 
   // ── Getters ────────────────────────────────────────────────────────────
@@ -58,6 +61,7 @@ export const useFoodStore = defineStore('food', () => {
       taskId.value = response.taskId
       status.value = 'PENDING'
       startPolling(response.taskId)
+      return response.taskId
     } catch (err) {
       error.value = err.message || 'Upload failed'
       status.value = 'FAILED'
@@ -72,38 +76,70 @@ export const useFoodStore = defineStore('food', () => {
    */
   function startPolling(id) {
     stopPolling()
+    const generation = ++_pollGeneration
     _pollStart = Date.now()
+    taskId.value = id
+    status.value = 'PENDING'
 
-    _pollTimer = setInterval(async () => {
+    const poll = async () => {
+      if (generation !== _pollGeneration) return
+      if (_pollInFlight) return
       if (Date.now() - _pollStart > POLL_TIMEOUT_MS) {
         stopPolling()
-        error.value = '分析超时，请稍后刷新页面重试'
+        error.value = '分析等待超时，请在历史记录中查看最终状态'
         status.value = 'FAILED'
         return
       }
 
+      _pollInFlight = true
       try {
         const result = await getTaskStatus(id)
+        if (generation !== _pollGeneration) return
         if (result.status === 'COMPLETED' && result.analysisResult) {
           stopPolling()
+          await loadTaskImage(id)
           applyAnalysisResult(result.analysisResult)
+          return
         } else if (result.status === 'FAILED') {
           stopPolling()
           error.value = result.analysisResult?.error || '分析失败'
           status.value = 'FAILED'
+          return
         }
       } catch (err) {
-        // Network hiccup – keep polling; persistent errors will hit the timeout
         console.warn('[nutri-flow] poll error:', err.message)
+      } finally {
+        _pollInFlight = false
       }
-    }, POLL_INTERVAL_MS)
+
+      if (generation === _pollGeneration) {
+        _pollTimer = setTimeout(poll, POLL_INTERVAL_MS)
+      }
+    }
+
+    if (typeof document !== 'undefined') {
+      _visibilityListener = () => {
+        if (document.visibilityState !== 'visible' || generation !== _pollGeneration) return
+        if (_pollTimer !== null) clearTimeout(_pollTimer)
+        _pollTimer = null
+        poll()
+      }
+      document.addEventListener('visibilitychange', _visibilityListener)
+    }
+
+    poll()
   }
 
   /** Cancel any active polling timer. */
   function stopPolling() {
+    _pollGeneration += 1
     if (_pollTimer !== null) {
-      clearInterval(_pollTimer)
+      clearTimeout(_pollTimer)
       _pollTimer = null
+    }
+    if (_visibilityListener && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', _visibilityListener)
+      _visibilityListener = null
     }
   }
 
@@ -131,14 +167,7 @@ export const useFoodStore = defineStore('food', () => {
       status.value = result.status || 'PENDING'
 
       if (result.status === 'COMPLETED' && result.analysisResult) {
-        try {
-          const imageBlob = await getTaskImageBlob(id)
-          if (imageBlob && imageBlob.size > 0) {
-            setOwnedPreviewUrl(URL.createObjectURL(imageBlob))
-          }
-        } catch {
-          clearOwnedPreviewUrl()
-        }
+        await loadTaskImage(id)
 
         applyAnalysisResult(result.analysisResult)
         status.value = 'COMPLETED'
@@ -150,6 +179,8 @@ export const useFoodStore = defineStore('food', () => {
         segmentationPreviewUrl.value = null
         adviceReport.value = ''
         error.value = result.errorMessage || result.analysisResult?.errorMessage || '分析失败'
+      } else if (result.status === 'PENDING') {
+        startPolling(id)
       }
 
       return result
@@ -169,6 +200,17 @@ export const useFoodStore = defineStore('food', () => {
     detectedItems.value = []
     adviceReport.value = null
     error.value = null
+  }
+
+  async function loadTaskImage(id) {
+    try {
+      const imageBlob = await getTaskImageBlob(id)
+      if (imageBlob && imageBlob.size > 0) {
+        setOwnedPreviewUrl(URL.createObjectURL(imageBlob))
+      }
+    } catch {
+      clearOwnedPreviewUrl()
+    }
   }
 
   function setOwnedPreviewUrl(url) {

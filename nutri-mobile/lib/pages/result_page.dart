@@ -22,6 +22,7 @@ class ResultPage extends StatelessWidget {
 
   static const int _defaultVisibleItemCount = 5;
   static const int _defaultOverlayItemCount = 5;
+  static const double _adviceConfidenceThreshold = 0.65;
 
   static const Map<String, String> _labelZh = {
     'background': '背景',
@@ -180,10 +181,12 @@ class ResultPage extends StatelessWidget {
                   const SizedBox(height: 14),
                   Text(
                     '总热量：${result.totalCalories.toStringAsFixed(1)} 千卡',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 8),
-                  StatusBanner(status: result.status, message: result.errorMessage),
+                  StatusBanner(
+                      status: result.status, message: result.errorMessage),
                   if (result.kcalRange != null) ...[
                     const SizedBox(height: 6),
                     Text(
@@ -207,198 +210,178 @@ class ResultPage extends StatelessWidget {
                 ],
               ),
             ),
-          if (interactiveBaseImage != null && _hasInteractiveRegions(result.detectedItems)) ...[
-            const SizedBox(height: 12),
-            AppSurfaceCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const AppSectionHeading(
-                    title: '可点击分割区域',
-                    subtitle: '保留轻量轮廓交互，你可以点击区域查看更细的食物明细。',
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      Chip(
-                        visualDensity: VisualDensity.compact,
-                        avatar: Icon(Icons.auto_awesome_outlined, size: 16, color: Colors.teal.shade700),
-                        label: const Text('轻量轮廓模式'),
-                        side: BorderSide(color: Colors.teal.shade100),
-                        backgroundColor: Colors.teal.shade50,
-                        labelStyle: TextStyle(
-                          color: Colors.teal.shade900,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
-                        ),
-                      ),
-                      Chip(
-                        visualDensity: VisualDensity.compact,
-                        avatar: Icon(Icons.pan_tool_alt_outlined, size: 16, color: Colors.orange.shade700),
-                        label: const Text('点击查看详情'),
-                        side: BorderSide(color: Colors.orange.shade100),
-                        backgroundColor: Colors.orange.shade50,
-                        labelStyle: TextStyle(
-                          color: Colors.orange.shade900,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  _InteractiveSegmentationCanvas(
-                    overlayImageBytes: interactiveBaseImage,
-                    originalImageBytes: imageBytes,
-                    groups: overlayGroups,
-                    onGroupTap: (group) => _showGroupDetail(context, group),
-                  ),
-                ],
-              ),
-            ),
-          ] else if (segPreview != null) ...[
-            const SizedBox(height: 12),
-            AppSurfaceCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const AppSectionHeading(
-                    title: '分割预览图',
-                    subtitle: '当交互分割不可用时，仍保留一张静态分割参考图。',
-                  ),
-                  const SizedBox(height: 8),
-                  _ResultImagePreview(imageBytes: segPreview),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          const AppSurfaceCard(
-            color: Color(0xFFFFF6EF),
-            child: Text(
-              '提示：热量与营养为估算值，由识别面积与类别营养先验联合计算，仅供饮食管理参考。',
-              style: TextStyle(height: 1.5),
-            ),
-          ),
-          const SizedBox(height: 12),
-          const Text('食物类型摘要', style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          if (result.detectedItems.isEmpty)
-            const Text('暂未识别到明确食物，请尝试更清晰的图片')
-          else ...[
-            Text(
-                  '已合并为 ${allGroups.length} 类，共 ${result.detectedItems.length} 个区域；画布仅展示热量最高的 $_defaultOverlayItemCount 类主轮廓，其余类别可在下方摘要查看。',
-              style: TextStyle(color: Colors.grey.shade700),
-            ),
-            const SizedBox(height: 8),
-            ..._buildVisibleGroups(context, visibleGroups),
-            if (hiddenGroups.isNotEmpty) ...[
-              Card(
-                color: Colors.orange.shade50,
-                margin: const EdgeInsets.only(bottom: 8),
-                child: ListTile(
-                  dense: true,
-                  title: Text('其余 ${hiddenGroups.length} 类已折叠'),
-                  subtitle: Text('合计约 ${hiddenGroups.fold<double>(0, (s, g) => s + g.totalCalories).toStringAsFixed(1)} 千卡'),
+            if (interactiveBaseImage != null &&
+                _hasInteractiveRegions(result.detectedItems)) ...[
+              const SizedBox(height: 12),
+              AppSurfaceCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('分割区域',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    const Text('点击图中区域查看对应食物'),
+                    const SizedBox(height: 10),
+                    _InteractiveSegmentationCanvas(
+                      overlayImageBytes: interactiveBaseImage,
+                      originalImageBytes: imageBytes,
+                      groups: overlayGroups,
+                      onGroupTap: (group) => _showGroupDetail(context, group),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 8),
-              ExpansionTile(
-                tilePadding: EdgeInsets.zero,
-                childrenPadding: const EdgeInsets.only(top: 4),
-                title: Text('查看更多 ${hiddenGroups.length} 类'),
-                children: hiddenGroups
-                    .map(
-                      (group) => Card(
-                        child: ListTile(
-                          onTap: () => _showGroupDetail(context, group),
-                          title: Text(group.displayName),
-                          subtitle: Text('${group.instanceCount} 个区域 · 置信度 ${(group.averageConfidence * 100).toStringAsFixed(1)}%'),
-                          trailing: Text(
-                            '${group.totalCalories.toStringAsFixed(1)} 千卡',
-                          ),
-                        ),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ] else ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(
-                  '当前类别数未超过 $_defaultVisibleItemCount 类，因此没有额外折叠项。',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ] else if (segPreview != null) ...[
+              const SizedBox(height: 12),
+              AppSurfaceCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('分割区域',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 10),
+                    _ResultImagePreview(imageBytes: segPreview),
+                  ],
                 ),
               ),
             ],
-          ],
-          const SizedBox(height: 14),
-          AppSurfaceCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const AppSectionHeading(
-                  title: '饮食建议',
-                  subtitle: '会结合这餐识别结果、你的目标和近期饮食情况整理建议。',
+            const SizedBox(height: 12),
+            const AppSurfaceCard(
+              color: Color(0xFFFFF6EF),
+              child: Text(
+                '提示：热量与营养为估算值，由识别面积与类别营养先验联合计算，仅供饮食管理参考。',
+                style: TextStyle(height: 1.5),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text('食物类型摘要', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            if (result.detectedItems.isEmpty)
+              const Text('暂未识别到明确食物，请尝试更清晰的图片')
+            else ...[
+              Text(
+                  '${allGroups.length} 类，共 ${result.detectedItems.length} 个区域'),
+              const SizedBox(height: 8),
+              ..._buildVisibleGroups(context, visibleGroups),
+              if (hiddenGroups.isNotEmpty) ...[
+                Card(
+                  color: Colors.orange.shade50,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    dense: true,
+                    title: Text('其余 ${hiddenGroups.length} 类已折叠'),
+                    subtitle: Text(
+                        '合计约 ${hiddenGroups.fold<double>(0, (s, g) => s + g.totalCalories).toStringAsFixed(1)} 千卡'),
+                  ),
                 ),
-                if (adviceSections.basis != null) ...[
+                const SizedBox(height: 8),
+                ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.only(top: 4),
+                  title: Text('查看更多 ${hiddenGroups.length} 类'),
+                  children: hiddenGroups
+                      .map(
+                        (group) => Card(
+                          child: ListTile(
+                            onTap: () => _showGroupDetail(context, group),
+                            title: Text(group.displayName),
+                            subtitle: Text(_groupSubtitle(group)),
+                            trailing: Text(
+                              '${group.totalCalories.toStringAsFixed(1)} 千卡',
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
+            ],
+            if (allGroups.any((group) => group.isLowConfidence)) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFF0D3AD)),
+                ),
+                child: const Text(
+                  '低于 65% 的类别仅作为待确认线索，不用于生成点名食物的具体建议。',
+                  style: TextStyle(
+                    color: Color(0xFF80552C),
+                    fontSize: 12.5,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 14),
+            AppSurfaceCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const AppSectionHeading(
+                    title: '饮食建议',
+                    subtitle: '结合本餐与当前目标生成。',
+                  ),
+                  if (adviceSections.basis != null) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF9F1E7),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFE8D6C2)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '这次建议主要参考',
+                            style: TextStyle(
+                              color: Colors.brown.shade800,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            adviceSections.basis!,
+                            style: TextStyle(
+                              color: Colors.brown.shade700,
+                              height: 1.55,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF9F1E7),
+                      color: Colors.amber.shade50,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFE8D6C2)),
+                      border: Border.all(color: Colors.amber.shade200),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '这次建议主要参考',
-                          style: TextStyle(
-                            color: Colors.brown.shade800,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          adviceSections.basis!,
-                          style: TextStyle(
-                            color: Colors.brown.shade700,
-                            height: 1.55,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      adviceSections.body,
                     ),
                   ),
                 ],
-                const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.shade50,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.amber.shade200),
-                  ),
-                  child: Text(
-                    adviceSections.body,
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: () => backOrGo(context, fallbackRoute: RoutePaths.upload),
-            icon: const Icon(Icons.upload),
-            label: const Text('返回继续上传'),
-          ),
-        ],
-      ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () =>
+                  backOrGo(context, fallbackRoute: RoutePaths.upload),
+              icon: const Icon(Icons.upload),
+              label: const Text('返回继续上传'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -435,8 +418,10 @@ class ResultPage extends StatelessWidget {
 
     final groups = grouped.entries.map((entry) {
       final instances = entry.value;
-      final displayName = instances.isNotEmpty ? _itemZhName(instances.first.item) : '未知食物';
-      return _FoodGroup(key: entry.key, displayName: displayName, instances: instances);
+      final displayName =
+          instances.isNotEmpty ? _itemZhName(instances.first.item) : '未知食物';
+      return _FoodGroup(
+          key: entry.key, displayName: displayName, instances: instances);
     }).toList();
 
     groups.sort((a, b) {
@@ -447,29 +432,39 @@ class ResultPage extends StatelessWidget {
     return groups;
   }
 
-  List<Widget> _buildVisibleGroups(BuildContext context, List<_FoodGroup> visibleGroups) {
-    return visibleGroups
-        .map((group) {
-          return Card(
-            child: ListTile(
-              onTap: () => _showGroupDetail(context, group),
-              title: Text(group.displayName),
-              subtitle: Text('${group.instanceCount} 个区域 · 置信度 ${(group.averageConfidence * 100).toStringAsFixed(1)}%'),
-              trailing: Text('${group.totalCalories.toStringAsFixed(1)} 千卡'),
-            ),
-          );
-        })
-        .toList();
+  List<Widget> _buildVisibleGroups(
+      BuildContext context, List<_FoodGroup> visibleGroups) {
+    return visibleGroups.map((group) {
+      return Card(
+        child: ListTile(
+          onTap: () => _showGroupDetail(context, group),
+          title: Text(group.displayName),
+          subtitle: Text(_groupSubtitle(group)),
+          trailing: Text('${group.totalCalories.toStringAsFixed(1)} 千卡'),
+        ),
+      );
+    }).toList();
+  }
+
+  String _groupSubtitle(_FoodGroup group) {
+    final base =
+        '${group.instanceCount} 个区域 · 置信度 ${(group.averageConfidence * 100).toStringAsFixed(1)}%';
+    return group.isLowConfidence ? '$base · 待确认，不用于具体建议' : base;
   }
 
   String _groupKey(DetectedItem item) {
     final classId = item.classId?.toString() ?? 'unknown';
-    final name = item.className.trim().isNotEmpty ? item.className.trim() : item.displayName.trim();
+    final name = item.className.trim().isNotEmpty
+        ? item.className.trim()
+        : item.displayName.trim();
     return '$classId|${name.toLowerCase()}';
   }
 
   Uint8List? _decodeMaskRle(String? rle, List<int>? shape) {
-    if (rle == null || rle.trim().isEmpty || shape == null || shape.length < 2) {
+    if (rle == null ||
+        rle.trim().isEmpty ||
+        shape == null ||
+        shape.length < 2) {
       return null;
     }
     final height = shape[0];
@@ -544,7 +539,8 @@ class ResultPage extends StatelessWidget {
                 children: [
                   Text(
                     group.displayName,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 8),
                   Text('区域数量：${group.instanceCount}'),
@@ -552,15 +548,28 @@ class ResultPage extends StatelessWidget {
                   Text('蛋白质：${group.totalProtein.toStringAsFixed(1)} g'),
                   Text('脂肪：${group.totalFat.toStringAsFixed(1)} g'),
                   Text('碳水：${group.totalCarbs.toStringAsFixed(1)} g'),
+                  if (group.isLowConfidence) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      '这个类别的平均置信度低于 65%，仅供核对，不用于点名建议。',
+                      style: TextStyle(
+                        color: Color(0xFF80552C),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
-                  const Text('包含区域', style: TextStyle(fontWeight: FontWeight.w700)),
+                  const Text('包含区域',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 8),
                   ...group.instances.map(
                     (instance) => Card(
                       child: ListTile(
                         title: Text('区域 ${instance.index + 1}'),
-                        subtitle: Text('置信度 ${(instance.item.confidence * 100).toStringAsFixed(1)}%'),
-                        trailing: Text('${(instance.item.calories ?? 0).toStringAsFixed(1)} 千卡'),
+                        subtitle: Text(
+                            '置信度 ${(instance.item.confidence * 100).toStringAsFixed(1)}%'),
+                        trailing: Text(
+                            '${(instance.item.calories ?? 0).toStringAsFixed(1)} 千卡'),
                         onTap: () {
                           Navigator.pop(sheetContext);
                         },
@@ -639,13 +648,20 @@ class _FoodGroup {
   final String displayName;
   final List<_SegmentInstance> instances;
 
-  double get totalCalories => instances.fold<double>(0, (sum, e) => sum + (e.item.calories ?? 0));
-  double get totalProtein => instances.fold<double>(0, (sum, e) => sum + (e.item.proteinG ?? 0));
-  double get totalFat => instances.fold<double>(0, (sum, e) => sum + (e.item.fatG ?? 0));
-  double get totalCarbs => instances.fold<double>(0, (sum, e) => sum + (e.item.carbsG ?? 0));
+  double get totalCalories =>
+      instances.fold<double>(0, (sum, e) => sum + (e.item.calories ?? 0));
+  double get totalProtein =>
+      instances.fold<double>(0, (sum, e) => sum + (e.item.proteinG ?? 0));
+  double get totalFat =>
+      instances.fold<double>(0, (sum, e) => sum + (e.item.fatG ?? 0));
+  double get totalCarbs =>
+      instances.fold<double>(0, (sum, e) => sum + (e.item.carbsG ?? 0));
   double get averageConfidence => instances.isEmpty
       ? 0
-      : instances.fold<double>(0, (sum, e) => sum + e.item.confidence) / instances.length;
+      : instances.fold<double>(0, (sum, e) => sum + e.item.confidence) /
+          instances.length;
+  bool get isLowConfidence =>
+      averageConfidence < ResultPage._adviceConfidenceThreshold;
   int get instanceCount => instances.length;
 }
 
@@ -666,14 +682,22 @@ class _SegmentInstance {
 
   bool containsPoint(double x, double y, Rect imageRect) {
     final data = maskBytes;
-    if (data == null || maskWidth <= 0 || maskHeight <= 0 || imageRect.width <= 0 || imageRect.height <= 0) {
+    if (data == null ||
+        maskWidth <= 0 ||
+        maskHeight <= 0 ||
+        imageRect.width <= 0 ||
+        imageRect.height <= 0) {
       return false;
     }
     if (!imageRect.contains(Offset(x, y))) {
       return false;
     }
-    final px = (((x - imageRect.left) / imageRect.width) * maskWidth).floor().clamp(0, maskWidth - 1);
-    final py = (((y - imageRect.top) / imageRect.height) * maskHeight).floor().clamp(0, maskHeight - 1);
+    final px = (((x - imageRect.left) / imageRect.width) * maskWidth)
+        .floor()
+        .clamp(0, maskWidth - 1);
+    final py = (((y - imageRect.top) / imageRect.height) * maskHeight)
+        .floor()
+        .clamp(0, maskHeight - 1);
     final index = py * maskWidth + px;
     return index >= 0 && index < data.length && data[index] != 0;
   }
@@ -767,7 +791,8 @@ class _ResultImagePreviewState extends State<_ResultImagePreview> {
 }
 
 class _DecodedCanvasImages {
-  const _DecodedCanvasImages({required this.overlayImage, required this.originalImage});
+  const _DecodedCanvasImages(
+      {required this.overlayImage, required this.originalImage});
 
   final ui.Image? overlayImage;
   final ui.Image? originalImage;
@@ -787,10 +812,12 @@ class _InteractiveSegmentationCanvas extends StatefulWidget {
   final ValueChanged<_FoodGroup>? onGroupTap;
 
   @override
-  State<_InteractiveSegmentationCanvas> createState() => _InteractiveSegmentationCanvasState();
+  State<_InteractiveSegmentationCanvas> createState() =>
+      _InteractiveSegmentationCanvasState();
 }
 
-class _InteractiveSegmentationCanvasState extends State<_InteractiveSegmentationCanvas> {
+class _InteractiveSegmentationCanvasState
+    extends State<_InteractiveSegmentationCanvas> {
   late final Future<_DecodedCanvasImages> _decodedImagesFuture;
   late final List<_SegmentOverlayGroup> _overlayGroups;
   _SegmentOverlayGroup? _selectedGroup;
@@ -807,11 +834,13 @@ class _InteractiveSegmentationCanvasState extends State<_InteractiveSegmentation
     final overlayImage = await _decodeUiImageBytes(widget.overlayImageBytes);
     ui.Image? originalImage;
     if (widget.originalImageBytes != null) {
-      originalImage = identical(widget.originalImageBytes, widget.overlayImageBytes)
-          ? overlayImage
-          : await _decodeUiImageBytes(widget.originalImageBytes!);
+      originalImage =
+          identical(widget.originalImageBytes, widget.overlayImageBytes)
+              ? overlayImage
+              : await _decodeUiImageBytes(widget.originalImageBytes!);
     }
-    return _DecodedCanvasImages(overlayImage: overlayImage, originalImage: originalImage);
+    return _DecodedCanvasImages(
+        overlayImage: overlayImage, originalImage: originalImage);
   }
 
   List<_SegmentOverlayGroup> _buildOverlayGroups(List<_FoodGroup> groups) {
@@ -827,7 +856,10 @@ class _InteractiveSegmentationCanvasState extends State<_InteractiveSegmentation
 
   _SegmentOverlayGroup? _mergeGroupMask(_FoodGroup group) {
     final candidates = group.instances
-        .where((instance) => instance.maskBytes != null && instance.maskWidth > 0 && instance.maskHeight > 0)
+        .where((instance) =>
+            instance.maskBytes != null &&
+            instance.maskWidth > 0 &&
+            instance.maskHeight > 0)
         .toList();
     if (candidates.isEmpty) {
       return null;
@@ -879,11 +911,13 @@ class _InteractiveSegmentationCanvasState extends State<_InteractiveSegmentation
       maskWidth: width,
       maskHeight: height,
       areaPixels: compactedArea,
-      badgeAnchor: Offset((compacted.minX + compacted.maxX + 1) / 2, compacted.minY.toDouble()),
+      badgeAnchor: Offset(
+          (compacted.minX + compacted.maxX + 1) / 2, compacted.minY.toDouble()),
     );
   }
 
-  _MaskDisplayCompaction _compactMaskForDisplay(Uint8List mask, int width, int height) {
+  _MaskDisplayCompaction _compactMaskForDisplay(
+      Uint8List mask, int width, int height) {
     final componentIdByPixel = Int32List(mask.length);
     final componentAreas = <int>[];
     final componentPixels = <List<int>>[];
@@ -937,8 +971,9 @@ class _InteractiveSegmentationCanvasState extends State<_InteractiveSegmentation
       return _MaskDisplayCompaction.empty();
     }
 
-    final sortedComponentIndices = List<int>.generate(componentAreas.length, (index) => index)
-      ..sort((a, b) => componentAreas[b].compareTo(componentAreas[a]));
+    final sortedComponentIndices =
+        List<int>.generate(componentAreas.length, (index) => index)
+          ..sort((a, b) => componentAreas[b].compareTo(componentAreas[a]));
     final largestArea = componentAreas[sortedComponentIndices.first];
     final totalArea = componentAreas.fold<int>(0, (sum, area) => sum + area);
     final dominantAreaThreshold = math.max(180, (largestArea * 0.14).round());
@@ -974,7 +1009,8 @@ class _InteractiveSegmentationCanvasState extends State<_InteractiveSegmentation
       }
 
       keptComponents++;
-      if (keptComponents >= maxComponentsToKeep && areaPixels >= (totalArea * 0.82).round()) {
+      if (keptComponents >= maxComponentsToKeep &&
+          areaPixels >= (totalArea * 0.82).round()) {
         break;
       }
     }
@@ -1050,7 +1086,8 @@ class _InteractiveSegmentationCanvasState extends State<_InteractiveSegmentation
           );
         }
 
-        final aspectRatio = _overlayGroups.isNotEmpty && _overlayGroups.first.maskHeight > 0
+        final aspectRatio = _overlayGroups.isNotEmpty &&
+                _overlayGroups.first.maskHeight > 0
             ? _overlayGroups.first.maskWidth / _overlayGroups.first.maskHeight
             : displayBaseImage.width / displayBaseImage.height;
 
@@ -1064,10 +1101,18 @@ class _InteractiveSegmentationCanvasState extends State<_InteractiveSegmentation
                   final imageRect = Offset.zero & constraints.biggest;
                   return GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTapUp: _showOriginalPreview ? null : (details) => _handleTap(details, imageRect),
-                    onLongPressStart: widget.originalImageBytes == null ? null : (_) => _setOriginalPreviewVisible(true),
-                    onLongPressEnd: widget.originalImageBytes == null ? null : (_) => _setOriginalPreviewVisible(false),
-                    onLongPressUp: widget.originalImageBytes == null ? null : () => _setOriginalPreviewVisible(false),
+                    onTapUp: _showOriginalPreview
+                        ? null
+                        : (details) => _handleTap(details, imageRect),
+                    onLongPressStart: widget.originalImageBytes == null
+                        ? null
+                        : (_) => _setOriginalPreviewVisible(true),
+                    onLongPressEnd: widget.originalImageBytes == null
+                        ? null
+                        : (_) => _setOriginalPreviewVisible(false),
+                    onLongPressUp: widget.originalImageBytes == null
+                        ? null
+                        : () => _setOriginalPreviewVisible(false),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: CustomPaint(
@@ -1104,15 +1149,31 @@ class _InteractiveSegmentationCanvasState extends State<_InteractiveSegmentation
                     children: [
                       Text(
                         _selectedGroup!.group.displayName,
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 16),
                       ),
                       const SizedBox(height: 6),
                       Text('已合并区域：${_selectedGroup!.group.instanceCount} 个'),
-                      Text('平均置信度 ${( _selectedGroup!.group.averageConfidence * 100).toStringAsFixed(1)}%'),
-                      Text('热量：${_selectedGroup!.group.totalCalories.toStringAsFixed(1)} 千卡'),
-                      Text('蛋白质：${_selectedGroup!.group.totalProtein.toStringAsFixed(1)} g'),
-                      Text('脂肪：${_selectedGroup!.group.totalFat.toStringAsFixed(1)} g'),
-                      Text('碳水：${_selectedGroup!.group.totalCarbs.toStringAsFixed(1)} g'),
+                      Text(
+                          '平均置信度 ${(_selectedGroup!.group.averageConfidence * 100).toStringAsFixed(1)}%'),
+                      Text(
+                          '热量：${_selectedGroup!.group.totalCalories.toStringAsFixed(1)} 千卡'),
+                      Text(
+                          '蛋白质：${_selectedGroup!.group.totalProtein.toStringAsFixed(1)} g'),
+                      Text(
+                          '脂肪：${_selectedGroup!.group.totalFat.toStringAsFixed(1)} g'),
+                      Text(
+                          '碳水：${_selectedGroup!.group.totalCarbs.toStringAsFixed(1)} g'),
+                      if (_selectedGroup!.group.isLowConfidence) ...[
+                        const SizedBox(height: 6),
+                        const Text(
+                          '待确认类别，不用于具体饮食建议。',
+                          style: TextStyle(
+                            color: Color(0xFF80552C),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -1143,14 +1204,21 @@ class _SegmentOverlayGroup {
   final Offset badgeAnchor;
 
   bool containsPoint(double x, double y, Rect imageRect) {
-    if (maskWidth <= 0 || maskHeight <= 0 || imageRect.width <= 0 || imageRect.height <= 0) {
+    if (maskWidth <= 0 ||
+        maskHeight <= 0 ||
+        imageRect.width <= 0 ||
+        imageRect.height <= 0) {
       return false;
     }
     if (!imageRect.contains(Offset(x, y))) {
       return false;
     }
-    final px = (((x - imageRect.left) / imageRect.width) * maskWidth).floor().clamp(0, maskWidth - 1);
-    final py = (((y - imageRect.top) / imageRect.height) * maskHeight).floor().clamp(0, maskHeight - 1);
+    final px = (((x - imageRect.left) / imageRect.width) * maskWidth)
+        .floor()
+        .clamp(0, maskWidth - 1);
+    final py = (((y - imageRect.top) / imageRect.height) * maskHeight)
+        .floor()
+        .clamp(0, maskHeight - 1);
     final index = py * maskWidth + px;
     return index >= 0 && index < maskBytes.length && maskBytes[index] != 0;
   }
@@ -1244,12 +1312,15 @@ class _SegmentationOverlayPainter extends CustomPainter {
       final isSelected = overlay == selectedOverlay;
       final accentColor = _palette[i % _palette.length];
       final accentLineColor = Color.lerp(Colors.black, accentColor, 0.78)!;
-      final borderPath = _buildMaskBorderPath(imageRect, overlay.maskBytes, overlay.maskWidth, overlay.maskHeight);
+      final borderPath = _buildMaskBorderPath(
+          imageRect, overlay.maskBytes, overlay.maskWidth, overlay.maskHeight);
       fillPaint.color = accentColor.withAlpha(isSelected ? 84 : 54);
       glowPaint
         ..color = accentColor.withAlpha(isSelected ? 104 : 0)
         ..strokeWidth = isSelected ? 8.0 : 0.0
-        ..maskFilter = isSelected ? const ui.MaskFilter.blur(ui.BlurStyle.normal, 4.0) : null;
+        ..maskFilter = isSelected
+            ? const ui.MaskFilter.blur(ui.BlurStyle.normal, 4.0)
+            : null;
       outlinePaint
         ..color = Colors.white.withAlpha(isSelected ? 252 : 242)
         ..strokeWidth = isSelected ? 5.4 : 4.0;
@@ -1264,8 +1335,10 @@ class _SegmentationOverlayPainter extends CustomPainter {
       canvas.drawPath(borderPath, outlinePaint);
       canvas.drawPath(borderPath, accentPaint);
 
-      final x = imageRect.left + overlay.badgeAnchor.dx / overlay.maskWidth * imageRect.width;
-      final y = imageRect.top + overlay.badgeAnchor.dy / overlay.maskHeight * imageRect.height;
+      final x = imageRect.left +
+          overlay.badgeAnchor.dx / overlay.maskWidth * imageRect.width;
+      final y = imageRect.top +
+          overlay.badgeAnchor.dy / overlay.maskHeight * imageRect.height;
 
       final badgeFillColor = Colors.white.withAlpha(isSelected ? 250 : 242);
       final badgeRect = RRect.fromRectAndRadius(
@@ -1300,11 +1373,13 @@ class _SegmentationOverlayPainter extends CustomPainter {
         ),
         textDirection: TextDirection.ltr,
       )..layout(minWidth: 0, maxWidth: 36);
-      tp.paint(canvas, Offset(badgeRect.left + (36 - tp.width) / 2, badgeRect.top + 4));
+      tp.paint(canvas,
+          Offset(badgeRect.left + (36 - tp.width) / 2, badgeRect.top + 4));
     }
   }
 
-  Path _buildMaskBorderPath(Rect imageRect, Uint8List mask, int maskWidth, int maskHeight) {
+  Path _buildMaskBorderPath(
+      Rect imageRect, Uint8List mask, int maskWidth, int maskHeight) {
     final path = Path();
     if (maskWidth <= 0 || maskHeight <= 0) {
       return path;
@@ -1314,7 +1389,8 @@ class _SegmentationOverlayPainter extends CustomPainter {
     final reducedMask = reduced.mask;
     final reducedWidth = reduced.width;
     final reducedHeight = reduced.height;
-    final loops = _extractBoundaryLoops(reducedMask, reducedWidth, reducedHeight);
+    final loops =
+        _extractBoundaryLoops(reducedMask, reducedWidth, reducedHeight);
     if (loops.isEmpty) {
       return path;
     }
@@ -1403,10 +1479,12 @@ class _SegmentationOverlayPainter extends CustomPainter {
       }
     }
 
-    return _ReducedMask(mask: reducedMask, width: reducedWidth, height: reducedHeight);
+    return _ReducedMask(
+        mask: reducedMask, width: reducedWidth, height: reducedHeight);
   }
 
-  List<List<_GridPoint>> _extractBoundaryLoops(Uint8List mask, int width, int height) {
+  List<List<_GridPoint>> _extractBoundaryLoops(
+      Uint8List mask, int width, int height) {
     bool isFilled(int row, int col) {
       if (row < 0 || row >= height || col < 0 || col >= width) {
         return false;
@@ -1479,8 +1557,10 @@ class _SegmentationOverlayPainter extends CustomPainter {
       for (var i = 0; i < current.length; i++) {
         final p0 = current[i];
         final p1 = current[(i + 1) % current.length];
-        next.add(Offset(0.75 * p0.dx + 0.25 * p1.dx, 0.75 * p0.dy + 0.25 * p1.dy));
-        next.add(Offset(0.25 * p0.dx + 0.75 * p1.dx, 0.25 * p0.dy + 0.75 * p1.dy));
+        next.add(
+            Offset(0.75 * p0.dx + 0.25 * p1.dx, 0.75 * p0.dy + 0.25 * p1.dy));
+        next.add(
+            Offset(0.25 * p0.dx + 0.75 * p1.dx, 0.25 * p0.dy + 0.75 * p1.dy));
       }
       current = next;
     }
@@ -1492,7 +1572,8 @@ class _SegmentationOverlayPainter extends CustomPainter {
       return;
     }
 
-    Offset midpoint(Offset a, Offset b) => Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2);
+    Offset midpoint(Offset a, Offset b) =>
+        Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2);
 
     final start = midpoint(points.last, points.first);
     path.moveTo(start.dx, start.dy);
@@ -1515,7 +1596,8 @@ class _SegmentationOverlayPainter extends CustomPainter {
 }
 
 class _ReducedMask {
-  const _ReducedMask({required this.mask, required this.width, required this.height});
+  const _ReducedMask(
+      {required this.mask, required this.width, required this.height});
 
   final Uint8List mask;
   final int width;

@@ -55,11 +55,11 @@
     </section>
 
     <section v-else class="history-grid">
-      <article
+      <RouterLink
         v-for="item in records"
         :key="item.taskId"
+        :to="{ name: 'task-result', params: { taskId: item.taskId } }"
         class="surface-card history-card"
-        @click="openRecord(item)"
       >
         <div class="history-card__top">
           <div>
@@ -86,7 +86,7 @@
           <span>点击查看详情</span>
           <span class="history-card__arrow">›</span>
         </div>
-      </article>
+      </RouterLink>
     </section>
 
     <section v-if="records.length > 0" class="surface-card pager-card">
@@ -99,10 +99,9 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { RouterLink } from 'vue-router'
 import { getDietLogHistory, getStoredWebSession } from '@/api/dietLog'
 
-const router = useRouter()
 const session = getStoredWebSession()
 const userId = ref(session.userId)
 const phone = ref(session.phone)
@@ -192,13 +191,6 @@ function previewAdvice(value) {
   return `${normalized.slice(0, 120)}...`
 }
 
-function openRecord(item) {
-  if (!item?.taskId) return
-  router.push({
-    name: 'task-result',
-    params: { taskId: item.taskId },
-  })
-}
 </script>
 
 <style scoped>
@@ -229,6 +221,11 @@ function openRecord(item) {
   transform: translateY(-2px);
   border-color: rgba(155, 91, 46, 0.34);
   box-shadow: 0 16px 32px rgba(86, 53, 26, 0.08);
+}
+
+.history-card:focus-visible {
+  outline: 3px solid rgba(155, 91, 46, 0.35);
+  outline-offset: 3px;
 }
 
 .history-card__top {

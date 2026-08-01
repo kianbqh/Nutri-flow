@@ -32,6 +32,12 @@ const routes = [
     name: 'task-result',
     component: () => import('@/views/TaskResultView.vue'),
   },
+  {
+    path: '/dashboard',
+    name: 'dashboard',
+    component: () => import('@/views/AdminDashboardView.vue'),
+    meta: { admin: true },
+  },
 ]
 
 const router = createRouter({

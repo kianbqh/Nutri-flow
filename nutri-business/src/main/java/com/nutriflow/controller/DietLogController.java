@@ -8,6 +8,7 @@ import com.nutriflow.mq.ImageAnalysisTaskMessage;
 import com.nutriflow.repository.DietLogRepository;
 import com.nutriflow.repository.UserRepository;
 import com.nutriflow.service.OssService;
+import com.nutriflow.service.TaskTraceService;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
@@ -18,17 +19,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.imageio.IIOImage;
-import javax.imageio.ImageIO;
-import javax.imageio.ImageWriteParam;
-import javax.imageio.ImageWriter;
-import javax.imageio.stream.ImageOutputStream;
-import java.awt.Color;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -62,14 +52,12 @@ import java.util.UUID;
 public class DietLogController {
 
     private static final long PENDING_TIMEOUT_SECONDS = 420;
-    private static final int ANALYSIS_IMAGE_MAX_SIDE = 1024;
-    private static final float ANALYSIS_IMAGE_JPEG_QUALITY = 0.82f;
-
     private final OssService ossService;
     private final FoodAnalysisProducer producer;
     private final DietLogRepository dietLogRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+    private final TaskTraceService taskTraceService;
 
     /**
      * Upload a meal image and dispatch an analysis task.
@@ -116,6 +104,10 @@ public class DietLogController {
         dietLog.setMealType(mealType);
         dietLog.setOssKey(ossKey);
         dietLogRepository.save(dietLog);
+        taskTraceService.recordEvent(
+                taskId, "UPLOAD", "COMPLETED", "business",
+                "图片已存储，任务记录已创建", null
+        );
 
         ImageAnalysisTaskMessage message = ImageAnalysisTaskMessage.builder()
                 .taskId(taskId)
@@ -130,6 +122,10 @@ public class DietLogController {
                 .build();
 
         producer.publishTask(message);
+        taskTraceService.recordEvent(
+                taskId, "QUEUE", "COMPLETED", "business",
+                "分析任务已发布到 RabbitMQ", null
+        );
 
         log.info("Dispatched analysis task: taskId={}", taskId);
         return ResponseEntity.accepted().body(Map.of(
@@ -159,6 +155,10 @@ public class DietLogController {
                         String timeoutJson = buildPendingTimeoutResult(log_);
                         log_.setAnalysisResult(timeoutJson);
                         dietLogRepository.save(log_);
+                        taskTraceService.recordEvent(
+                                taskId, "DATABASE", "FAILED", "business",
+                                "任务超过服务端等待上限", null
+                        );
                         completed = true;
                     }
 
@@ -184,10 +184,9 @@ public class DietLogController {
                 })
                 .orElseGet(() -> {
                     Map<String, Object> resp = new LinkedHashMap<>();
+                    resp.put("error", "分析记录不存在或已失效");
                     resp.put("taskId", taskId);
-                    resp.put("status", "PENDING");
-                    resp.put("analysisResult", null);
-                    return ResponseEntity.ok(resp);
+                    return ResponseEntity.status(404).body(resp);
                 });
     }
 
@@ -388,73 +387,10 @@ public class DietLogController {
         if (originalBytes.length == 0) {
             return null;
         }
-
-        try (ByteArrayInputStream input = new ByteArrayInputStream(originalBytes)) {
-            BufferedImage source = ImageIO.read(input);
-            if (source == null) {
-                return Base64.getEncoder().encodeToString(originalBytes);
-            }
-
-            BufferedImage resized = resizeForAnalysis(source);
-            byte[] encodedBytes = encodeJpeg(resized, ANALYSIS_IMAGE_JPEG_QUALITY);
-            return Base64.getEncoder().encodeToString(encodedBytes);
-        } catch (Exception exc) {
-            log.warn("Failed to build inline analysis image payload, falling back to original bytes: {}", exc.getMessage());
-            return Base64.getEncoder().encodeToString(originalBytes);
-        }
-    }
-
-    private BufferedImage resizeForAnalysis(BufferedImage source) {
-        int sourceWidth = source.getWidth();
-        int sourceHeight = source.getHeight();
-        int longSide = Math.max(sourceWidth, sourceHeight);
-        if (longSide <= ANALYSIS_IMAGE_MAX_SIDE && source.getType() == BufferedImage.TYPE_INT_RGB) {
-            return source;
-        }
-
-        double scale = longSide > ANALYSIS_IMAGE_MAX_SIDE
-                ? (double) ANALYSIS_IMAGE_MAX_SIDE / (double) longSide
-                : 1.0;
-        int targetWidth = Math.max(1, (int) Math.round(sourceWidth * scale));
-        int targetHeight = Math.max(1, (int) Math.round(sourceHeight * scale));
-
-        BufferedImage resized = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB);
-        Graphics2D graphics = resized.createGraphics();
-        try {
-            graphics.setColor(Color.WHITE);
-            graphics.fillRect(0, 0, targetWidth, targetHeight);
-            graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            graphics.drawImage(source, 0, 0, targetWidth, targetHeight, null);
-        } finally {
-            graphics.dispose();
-        }
-        return resized;
-    }
-
-    private byte[] encodeJpeg(BufferedImage image, float quality) throws IOException {
-        try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            var writers = ImageIO.getImageWritersByFormatName("jpg");
-            if (!writers.hasNext()) {
-                ImageIO.write(image, "jpg", output);
-                return output.toByteArray();
-            }
-
-            ImageWriter writer = writers.next();
-            try (ImageOutputStream imageOutput = ImageIO.createImageOutputStream(output)) {
-                writer.setOutput(imageOutput);
-                ImageWriteParam writeParam = writer.getDefaultWriteParam();
-                if (writeParam.canWriteCompressed()) {
-                    writeParam.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
-                    writeParam.setCompressionQuality(quality);
-                }
-                writer.write(null, new IIOImage(image, null, null), writeParam);
-            } finally {
-                writer.dispose();
-            }
-            return output.toByteArray();
-        }
+        // The inference service already letterboxes and resizes once. Sending
+        // the original bytes avoids a second lossy JPEG pass that can erase
+        // low-confidence food regions before the model sees them.
+        return Base64.getEncoder().encodeToString(originalBytes);
     }
 
 }

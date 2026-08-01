@@ -28,14 +28,16 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
   bool _listening = false;
   String? _error;
   String? _assistantError;
-  String? _assistantSummary;
+  String? _assistantMessage;
+  Map<String, dynamic>? _assistantResult;
+  String _assistantResultRawText = '';
   String? _phone;
   String? _nickname;
 
   String _healthGoal = 'WEIGHT_LOSS';
   int _dailyTarget = 1800;
   final Set<String> _restrictions = {};
-  String _gender = 'FEMALE';
+  String _gender = '';
   String _activity = 'MEDIUM';
 
   static const List<_RestrictionOption> _restrictionOptions = [
@@ -61,11 +63,13 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
   @override
   void initState() {
     super.initState();
+    _assistantInput.addListener(_clearStaleAssistantResult);
     _loadSettings();
   }
 
   @override
   void dispose() {
+    _assistantInput.removeListener(_clearStaleAssistantResult);
     _assistantInput.dispose();
     _ageController.dispose();
     _heightController.dispose();
@@ -102,10 +106,89 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
     if (weightText.isNotEmpty) {
       parts.add('体重 $weightText kg');
     }
-    parts.add('性别 ${_gender == 'MALE' ? '男' : '女'}');
+    if (_gender.isNotEmpty) {
+      parts.add('性别 ${_gender == 'MALE' ? '男' : '女'}');
+    }
     parts.add('活动量 ${switch (_activity) { 'LOW' => '低', 'HIGH' => '高', _ => '中' }}');
 
     return '当前解析会参考：${parts.join(' / ')}。你可以先语音说出目标，再往下微调。';
+  }
+
+  String get _parsedBodyText {
+    final result = _assistantResult;
+    if (result == null) {
+      return '待确认';
+    }
+    final parts = <String>[];
+    final age = _asInt(result['age']);
+    final heightCm = _asInt(result['heightCm']);
+    final weightKg = _asDouble(result['weightKg']);
+    final gender = result['gender']?.toString().toUpperCase();
+    final activity = result['activityLevel']?.toString().toUpperCase();
+    if (age != null) parts.add('$age 岁');
+    if (heightCm != null) parts.add('$heightCm cm');
+    if (weightKg != null) parts.add('${_formatNumber(weightKg)} kg');
+    if (gender == 'MALE') parts.add('男');
+    if (gender == 'FEMALE') parts.add('女');
+    if (activity == 'LOW') parts.add('活动量低');
+    if (activity == 'MEDIUM') parts.add('活动量中');
+    if (activity == 'HIGH') parts.add('活动量高');
+    return parts.isEmpty ? '未提取到明确资料' : parts.join(' / ');
+  }
+
+  String get _parsedRestrictionText {
+    final items = _assistantResult?['dietaryRestrictions'];
+    if (items is! List || items.isEmpty) {
+      return '无明确限制';
+    }
+    return items.map((item) => _restrictionLabel(item.toString())).join('、');
+  }
+
+  void _clearStaleAssistantResult() {
+    final rawText = _assistantInput.text.trim();
+    if (rawText == _assistantResultRawText) {
+      return;
+    }
+    if (_assistantResult == null && _assistantMessage == null) {
+      return;
+    }
+    setState(() {
+      _assistantResult = null;
+      _assistantResultRawText = '';
+      _assistantMessage = null;
+    });
+  }
+
+  String _restrictionLabel(String code) {
+    for (final option in _restrictionOptions) {
+      if (option.code == code) {
+        return option.label;
+      }
+    }
+    return code;
+  }
+
+  String _formatNumber(double value) {
+    return value == value.roundToDouble()
+        ? value.toInt().toString()
+        : value.toStringAsFixed(1);
+  }
+
+  int? _asInt(Object? value) {
+    return switch (value) {
+      int item => item,
+      num item => item.round(),
+      String item => int.tryParse(item),
+      _ => null,
+    };
+  }
+
+  double? _asDouble(Object? value) {
+    return switch (value) {
+      num item => item.toDouble(),
+      String item => double.tryParse(item),
+      _ => null,
+    };
   }
 
   Future<void> _loadSettings() async {
@@ -137,6 +220,8 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
         _weightController.text = weightKg?.toStringAsFixed(1) ?? '';
         if (gender == 'MALE' || gender == 'FEMALE') {
           _gender = gender;
+        } else {
+          _gender = '';
         }
         if (activity == 'LOW' || activity == 'MEDIUM' || activity == 'HIGH') {
           _activity = activity;
@@ -163,14 +248,14 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
         restrictions: _restrictions.toList(),
         heightCm: int.tryParse(_heightController.text.trim()),
         weightKg: double.tryParse(_weightController.text.trim()),
-        gender: _gender,
+        gender: _gender.isEmpty ? null : _gender,
       );
       await ProfileContextService.instance.saveSnapshot(
         ProfileContextSnapshot(
           age: int.tryParse(_ageController.text.trim()),
           heightCm: int.tryParse(_heightController.text.trim()),
           weightKg: double.tryParse(_weightController.text.trim()),
-          gender: _gender,
+          gender: _gender.isEmpty ? null : _gender,
           activityLevel: _activity,
         ),
       );
@@ -205,9 +290,7 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
       _listening = true;
     });
     await _speech.listen(onResult: (result) {
-      setState(() {
-        _assistantInput.text = result.recognizedWords;
-      });
+      _assistantInput.text = result.recognizedWords;
     });
   }
 
@@ -358,7 +441,7 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
       age: parsed.age ?? int.tryParse(_ageController.text.trim()),
       heightCm: parsed.heightCm ?? int.tryParse(_heightController.text.trim()),
       weightKg: parsed.weightKg ?? double.tryParse(_weightController.text.trim()),
-      gender: parsed.gender ?? _gender,
+      gender: parsed.gender ?? (_gender.isEmpty ? null : _gender),
       activityLevel: parsed.activityLevel ?? _activity,
     );
   }
@@ -382,7 +465,8 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
   }
 
   Future<void> _useAssistant({required bool apply}) async {
-    if (_assistantInput.text.trim().isEmpty) {
+    final rawText = _assistantInput.text.trim();
+    if (rawText.isEmpty) {
       setState(() => _assistantError = '请先输入或语音描述你的目标');
       return;
     }
@@ -390,49 +474,84 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
     setState(() {
       _assistantBusy = true;
       _assistantError = null;
-      _assistantSummary = null;
+      _assistantMessage = null;
     });
 
     try {
-      final _ParsedProfileContext parsedContext = _parseContextFromText(_assistantInput.text.trim());
+      final _ParsedProfileContext parsedContext = _parseContextFromText(rawText);
       final _ParsedProfileContext mergedContext = _mergeParsedContext(parsedContext);
-      final Map<String, dynamic> parsed = await ApiService.instance.parseGoalByAssistant(
-        rawText: _assistantInput.text.trim(),
-        age: mergedContext.age,
-        heightCm: mergedContext.heightCm,
-        weightKg: mergedContext.weightKg,
-        gender: mergedContext.gender,
-        activityLevel: mergedContext.activityLevel,
-        applyToProfile: apply,
-      );
+      final Map<String, dynamic> parsed =
+          _assistantResult != null && _assistantResultRawText == rawText
+              ? _assistantResult!
+              : await ApiService.instance.parseGoalByAssistant(
+                  rawText: rawText,
+                  age: mergedContext.age,
+                  heightCm: mergedContext.heightCm,
+                  weightKg: mergedContext.weightKg,
+                  gender: mergedContext.gender,
+                  activityLevel: mergedContext.activityLevel,
+                  applyToProfile: false,
+                );
 
       setState(() {
-        _applyParsedContextToInputs(parsedContext);
+        _assistantResult = parsed;
+        _assistantResultRawText = rawText;
+      });
+
+      if (!apply) return;
+
+      final responseContext = _ParsedProfileContext(
+        age: _asInt(parsed['age']) ?? mergedContext.age,
+        heightCm: _asInt(parsed['heightCm']) ?? mergedContext.heightCm,
+        weightKg: _asDouble(parsed['weightKg']) ?? mergedContext.weightKg,
+        gender: parsed['gender']?.toString() ?? mergedContext.gender,
+        activityLevel: parsed['activityLevel']?.toString() ?? mergedContext.activityLevel,
+      );
+      final restrictions = parsed['dietaryRestrictions'] is List
+          ? (parsed['dietaryRestrictions'] as List).map((item) => item.toString()).toList()
+          : _restrictions.toList();
+
+      setState(() {
+        _applyParsedContextToInputs(responseContext);
         _healthGoal = (parsed['healthGoal'] ?? _healthGoal).toString();
         _dailyTarget = _normalizeDailyTarget(parsed['dailyCalorieTarget']);
         _restrictions
           ..clear()
-          ..addAll(((parsed['dietaryRestrictions'] ?? []) as List).map((item) => item.toString()));
-        _assistantSummary = (parsed['summary'] ?? '').toString();
+          ..addAll(restrictions);
       });
 
-      if (apply) {
-        await ProfileContextService.instance.saveSnapshot(
-          ProfileContextSnapshot(
-            age: mergedContext.age,
-            heightCm: mergedContext.heightCm,
-            weightKg: mergedContext.weightKg,
-            gender: mergedContext.gender,
-            activityLevel: mergedContext.activityLevel,
-          ),
-        );
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已应用到当前目标')));
-      }
+      final UserProfile profile = await ApiService.instance.updateProfile(
+        nickname: (_nickname ?? '').trim().isEmpty ? null : _nickname!.trim(),
+        healthGoal: _healthGoal,
+        dailyCalorieTarget: _dailyTarget,
+        restrictions: _restrictions.toList(),
+        heightCm: responseContext.heightCm,
+        weightKg: responseContext.weightKg,
+        gender: responseContext.gender,
+      );
+      await ProfileContextService.instance.saveSnapshot(
+        ProfileContextSnapshot(
+          age: responseContext.age,
+          heightCm: responseContext.heightCm,
+          weightKg: responseContext.weightKg,
+          gender: responseContext.gender,
+          activityLevel: responseContext.activityLevel,
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _phone = profile.phone ?? _phone;
+        _nickname = profile.nickname;
+        _assistantResult = null;
+        _assistantResultRawText = '';
+        _assistantMessage = '目标资料已应用并保存。';
+      });
     } catch (e) {
       setState(() => _assistantError = ApiService.describeError(e, action: '助手解析'));
     } finally {
-      setState(() => _assistantBusy = false);
+      if (mounted) {
+        setState(() => _assistantBusy = false);
+      }
     }
   }
 
@@ -521,26 +640,50 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
                               child: FilledButton.icon(
                                 onPressed: pageBusy ? null : () => _useAssistant(apply: true),
                                 icon: const Icon(Icons.auto_fix_high_rounded),
-                                label: const Text('应用到目标'),
+                                label: Text(_assistantBusy ? '处理中...' : '应用并保存'),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          '先看看建议，合适的话再一键应用到当前目标。',
-                          style: TextStyle(fontSize: 12.5, color: Color(0xFF7A6A5D)),
-                        ),
-                        if (_assistantSummary != null) ...[
+                        if (_assistantMessage != null) ...[
+                          const SizedBox(height: 10),
+                          Text(
+                            _assistantMessage!,
+                            style: const TextStyle(
+                              color: Color(0xFF3E7159),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                        if (_assistantResult != null) ...[
                           const SizedBox(height: 12),
                           Container(
-                            padding: const EdgeInsets.all(12),
+                            padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: Colors.green.shade50,
+                              color: const Color(0xFFF4F8F5),
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.green.shade100),
+                              border: Border.all(color: const Color(0xFFD4E4D9)),
                             ),
-                            child: Text(_assistantSummary!),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  '解析结果',
+                                  style: TextStyle(fontWeight: FontWeight.w800),
+                                ),
+                                const SizedBox(height: 12),
+                                _AssistantResultRow(
+                                  label: '健康目标',
+                                  value: _goalZh[_assistantResult?['healthGoal']] ?? '综合健康',
+                                ),
+                                _AssistantResultRow(
+                                  label: '每日热量',
+                                  value: '${_assistantResult?['dailyCalorieTarget'] ?? '待确认'} 千卡',
+                                ),
+                                _AssistantResultRow(label: '基础资料', value: _parsedBodyText),
+                                _AssistantResultRow(label: '饮食限制', value: _parsedRestrictionText),
+                              ],
+                            ),
                           ),
                         ],
                         if (_assistantError != null) ...[
@@ -601,6 +744,7 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
                                       initialValue: _gender,
                                       decoration: const InputDecoration(labelText: '性别'),
                                       items: const [
+                                        DropdownMenuItem(value: '', child: Text('未设置')),
                                         DropdownMenuItem(value: 'MALE', child: Text('男')),
                                         DropdownMenuItem(value: 'FEMALE', child: Text('女')),
                                       ],
@@ -709,6 +853,48 @@ class _GoalSettingsPageState extends State<GoalSettingsPage> {
                 ],
               ),
             ),
+    );
+  }
+}
+
+class _AssistantResultRow extends StatelessWidget {
+  const _AssistantResultRow({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 9),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 72,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF738078),
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Color(0xFF28382F),
+                fontWeight: FontWeight.w700,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

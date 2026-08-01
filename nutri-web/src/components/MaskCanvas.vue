@@ -712,6 +712,8 @@ function toNumber(value) {
 .mask-canvas-wrapper {
   display: grid;
   gap: 16px;
+  width: 100%;
+  min-width: 0;
 }
 
 .mask-toolbar {
@@ -747,6 +749,9 @@ function toNumber(value) {
 }
 
 .mask-stage-shell {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   border-radius: 26px;
   overflow: hidden;
   border: 1px solid rgba(234, 215, 202, 0.95);
@@ -757,6 +762,7 @@ function toNumber(value) {
 .mask-canvas {
   display: block;
   width: 100%;
+  max-width: 100%;
   height: auto;
   cursor: crosshair;
 }
@@ -808,6 +814,12 @@ function toNumber(value) {
   border-color: rgba(195, 135, 92, 0.7);
   background: rgba(255, 243, 231, 0.96);
   box-shadow: 0 10px 20px rgba(164, 113, 72, 0.1);
+}
+
+.mask-legend-item:focus-visible,
+.mask-toggle:focus-visible {
+  outline: 3px solid rgba(155, 91, 46, 0.35);
+  outline-offset: 2px;
 }
 
 .legend-swatch {

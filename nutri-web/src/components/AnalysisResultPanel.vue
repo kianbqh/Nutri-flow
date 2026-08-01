@@ -13,47 +13,16 @@
           <div>
             <span class="result-kicker">分析结果</span>
             <h3 class="result-title">总热量：{{ Number(totalCalories || 0).toFixed(1) }} 千卡</h3>
-            <p class="result-subtitle">查看这次识别到的食物、热量和饮食建议。</p>
           </div>
           <span class="result-status" :class="statusClass">{{ statusLabel }}</span>
         </div>
-
-        <div class="result-summary-grid">
-          <article class="result-summary-card">
-            <span>识别类别</span>
-            <strong>{{ groupedDetectedItems.length }} 类</strong>
-            <p>本次共识别 {{ detectedItems.length }} 个区域。</p>
-          </article>
-          <article class="result-summary-card">
-            <span>查看方式</span>
-            <strong>点击区域查看详情</strong>
-            <p>点击图像中的食物区域，可查看对应信息。</p>
-          </article>
-          <article class="result-summary-card">
-            <span>建议状态</span>
-            <strong>{{ adviceSections.main ? '已生成' : '生成中' }}</strong>
-            <p>{{ adviceSections.basis ? '本次建议已结合你的目标和历史记录。' : '建议返回后会自动展示在下方。' }}</p>
-          </article>
-        </div>
+        <p class="result-compact-meta">识别 {{ groupedDetectedItems.length }} 类，共 {{ detectedItems.length }} 个区域</p>
       </div>
-    </section>
-
-    <section class="surface-card mask-stage">
-      <header class="section-head">
-        <h3 class="section-title">分割图像</h3>
-        <p class="section-subtitle">点击图像中的食物区域，可查看对应详情。</p>
-      </header>
-      <MaskCanvas
-        :image-url="imageUrl"
-        :preview-image-url="segmentationPreviewUrl"
-        :items="detectedItems"
-      />
     </section>
 
     <section class="surface-card">
       <header class="section-head">
         <h3 class="section-title">识别明细</h3>
-        <p class="section-subtitle">按食物类别汇总显示置信度、重量和热量。</p>
       </header>
       <div class="table-wrap">
         <table class="result-table">
@@ -71,6 +40,7 @@
                 <div class="food-name-cell">
                   <strong>{{ group.displayLabel }}</strong>
                   <small>{{ group.instanceCount }} 个区域</small>
+                  <small v-if="group.isLowConfidence" class="confidence-warning">待确认，不用于具体建议</small>
                 </div>
               </td>
               <td>{{ (group.averageConfidence * 100).toFixed(1) }}%</td>
@@ -86,12 +56,14 @@
           </tfoot>
         </table>
       </div>
+      <p v-if="hasLowConfidenceItems" class="confidence-note">
+        低于 65% 的类别仅作为待确认线索，不用于生成点名食物的具体建议。
+      </p>
     </section>
 
     <section class="surface-card advice-stage">
       <header class="section-head">
         <h3 class="section-title">饮食建议</h3>
-        <p class="section-subtitle">先给可执行建议，再把这次建议主要参考的依据单独放出来。</p>
       </header>
 
       <div v-if="adviceSections.basis" class="advice-basis">
@@ -100,9 +72,22 @@
       </div>
 
       <div class="advice-main">
-        <h4>本次建议正文</h4>
         <p>{{ adviceSections.main || '建议生成中，请稍候…' }}</p>
       </div>
+    </section>
+
+    <section class="surface-card mask-stage">
+      <header class="section-head">
+        <div>
+          <h3 class="section-title">分割区域</h3>
+          <p>点击图中区域可查看对应食物。</p>
+        </div>
+      </header>
+      <MaskCanvas
+        :image-url="imageUrl"
+        :preview-image-url="segmentationPreviewUrl"
+        :items="detectedItems"
+      />
     </section>
 
     <div v-if="backTo" class="page-actions result-actions">
@@ -169,6 +154,7 @@ const groupedDetectedItems = computed(() => {
     .map(group => ({
       ...group,
       averageConfidence: group.instanceCount ? group.confidenceSum / group.instanceCount : 0,
+      isLowConfidence: group.instanceCount ? group.confidenceSum / group.instanceCount < 0.65 : true,
     }))
     .sort((left, right) => {
       const calorieCompare = right.totalCalories - left.totalCalories
@@ -178,6 +164,7 @@ const groupedDetectedItems = computed(() => {
       return right.averageConfidence - left.averageConfidence
     })
 })
+const hasLowConfidenceItems = computed(() => groupedDetectedItems.value.some(group => group.isLowConfidence))
 const adviceSections = computed(() => splitAdvice(props.adviceReport || ''))
 
 function splitAdvice(report) {
@@ -222,6 +209,8 @@ function formatMetric(value) {
 .results-stack {
   display: grid;
   gap: 14px;
+  width: 100%;
+  min-width: 0;
 }
 
 .result-hero-card,
@@ -229,6 +218,7 @@ function formatMetric(value) {
 .result-actions {
   display: grid;
   gap: 14px;
+  min-width: 0;
 }
 
 .result-hero-card {
@@ -237,7 +227,8 @@ function formatMetric(value) {
 }
 
 .result-hero-media {
-  border-radius: 24px;
+  min-width: 0;
+  border-radius: 8px;
   background: #121318;
   border: 1px solid rgba(234, 215, 202, 0.95);
   display: grid;
@@ -271,6 +262,11 @@ function formatMetric(value) {
 .result-hero-body {
   display: grid;
   gap: 18px;
+  min-width: 0;
+}
+
+.result-compact-meta {
+  color: var(--muted);
 }
 
 .result-hero-title-row {
@@ -367,8 +363,18 @@ function formatMetric(value) {
   gap: 16px;
 }
 
+.mask-stage .section-head p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
 .table-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
 }
 
 .result-table {
@@ -414,15 +420,15 @@ function formatMetric(value) {
 
 .advice-basis {
   padding: 18px;
-  border-radius: 22px;
+  border-radius: 8px;
   background: rgba(255, 245, 236, 0.92);
   border: 1px solid rgba(242, 200, 168, 0.74);
 }
 
 .advice-main {
   padding: 22px;
-  border-radius: 24px;
-  background: linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(255, 248, 242, 0.98));
+  border-radius: 8px;
+  background: #fffaf6;
   border: 1px solid rgba(234, 215, 202, 0.96);
 }
 
@@ -451,5 +457,27 @@ function formatMetric(value) {
   .result-hero-title-row {
     flex-direction: column;
   }
+
+  .result-hero-media {
+    min-height: 220px;
+    padding: 10px;
+  }
+
+  .result-summary-card,
+  .advice-basis,
+  .advice-main {
+    border-radius: 16px;
+  }
+}
+
+.food-name-cell .confidence-warning {
+  color: var(--warning);
+  font-weight: 700;
+}
+
+.confidence-note {
+  margin-top: 12px;
+  color: var(--warning);
+  line-height: 1.65;
 }
 </style>

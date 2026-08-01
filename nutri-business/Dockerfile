@@ -15,6 +15,8 @@ RUN addgroup -S nutri && adduser -S -G nutri -u 10001 nutri
 WORKDIR /app
 COPY --from=build /workspace/target/nutri-business-*.jar /app/app.jar
 
+LABEL org.opencontainers.image.version="1.1.0"
+
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/urandom"
 
 USER nutri

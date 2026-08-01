@@ -55,3 +55,17 @@ DEALLOCATE PREPARE stmt_users_nickname_key;
 UPDATE `users`
 SET `phone` = '13800000001'
 WHERE `id` = 1 AND (`phone` IS NULL OR TRIM(`phone`) = '');
+
+CREATE TABLE IF NOT EXISTS `task_trace_events` (
+    `id`           BIGINT        NOT NULL AUTO_INCREMENT,
+    `task_id`      VARCHAR(36)   NOT NULL,
+    `stage`        VARCHAR(32)   NOT NULL,
+    `state`        VARCHAR(16)   NOT NULL,
+    `service_name` VARCHAR(32)   NOT NULL,
+    `detail`       VARCHAR(512)  DEFAULT NULL,
+    `duration_ms`  DECIMAL(12,2) DEFAULT NULL,
+    `occurred_at`  DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (`id`),
+    KEY `idx_trace_task_time` (`task_id`, `occurred_at`),
+    KEY `idx_trace_time` (`occurred_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

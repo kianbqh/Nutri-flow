@@ -71,6 +71,16 @@ oss:
 nutri:
   auth:
     expose-debug-code: ${NUTRI_AUTH_EXPOSE_DEBUG_CODE:true}
+  admin:
+    dashboard-key: ${NUTRI_ADMIN_DASHBOARD_KEY:}
+  internal:
+    trace-key: ${NUTRI_INTERNAL_TRACE_KEY:}
+  llm:
+    api-key: ${NUTRI_LLM_API_KEY:}
+    base-url: ${NUTRI_LLM_BASE_URL:https://api.moonshot.cn/v1}
+    model: ${NUTRI_LLM_MODEL:moonshot-v1-8k}
+    temperature: ${NUTRI_LLM_TEMPERATURE:0.3}
+    timeout-seconds: ${NUTRI_LLM_TIMEOUT_SECONDS:40}
   security:
     cors:
       allowed-origins: ${NUTRI_CORS_ALLOWED_ORIGINS:http://localhost:5173}

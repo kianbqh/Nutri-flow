@@ -88,17 +88,33 @@
                 {{ assistantBusy ? '生成中…' : '先看建议' }}
               </button>
               <button class="button button--primary" :disabled="pageBusy" @click="useAssistant(true)">
-                应用到目标
+                {{ assistantBusy ? '处理中…' : '应用并保存' }}
               </button>
             </div>
 
-            <p class="soft-note goal-note">先看看建议，合适的话再一键应用到当前目标。</p>
             <p v-if="assistantMessage" class="soft-note profile-success">{{ assistantMessage }}</p>
             <p v-if="assistantError" class="soft-note soft-note--error">{{ assistantError }}</p>
 
-            <div v-if="assistantSummary" class="summary-card">
-              <h4>助手建议摘要</h4>
-              <p>{{ assistantSummary }}</p>
+            <div v-if="assistantResult" class="summary-card">
+              <h4>解析结果</h4>
+              <div class="assistant-result-grid">
+                <div>
+                  <span>健康目标</span>
+                  <strong>{{ goalText(assistantResult.healthGoal) }}</strong>
+                </div>
+                <div>
+                  <span>每日热量</span>
+                  <strong>{{ assistantResult.dailyCalorieTarget || '待确认' }} kcal</strong>
+                </div>
+                <div>
+                  <span>基础资料</span>
+                  <strong>{{ parsedBodyText }}</strong>
+                </div>
+                <div>
+                  <span>饮食限制</span>
+                  <strong>{{ parsedRestrictionText }}</strong>
+                </div>
+              </div>
             </div>
           </template>
         </section>
@@ -149,6 +165,7 @@
               <div class="field-stack">
                 <label class="field-label" for="gender">性别</label>
                 <select id="gender" v-model="form.gender">
+                  <option value="">未设置</option>
                   <option value="FEMALE">女</option>
                   <option value="MALE">男</option>
                 </select>
@@ -235,7 +252,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
   getStoredWebProfileContext,
@@ -261,7 +278,8 @@ const error = ref('')
 const success = ref('')
 const assistantError = ref('')
 const assistantMessage = ref('')
-const assistantSummary = ref('')
+const assistantResult = ref(null)
+const assistantResultRawText = ref('')
 const assistantForm = reactive({
   rawText: '',
 })
@@ -271,7 +289,7 @@ const form = reactive({
   age: '',
   heightCm: '',
   weightKg: '',
-  gender: 'FEMALE',
+  gender: '',
   activityLevel: 'MEDIUM',
 })
 const selectedRestrictions = ref([])
@@ -287,6 +305,7 @@ const restrictionOptions = [
 ]
 
 let speechRecognition = null
+let speechInputBeforeStart = ''
 
 const hasSession = computed(() => Boolean(currentUserId.value && currentPhone.value))
 const pageBusy = computed(() => loading.value || saving.value || assistantBusy.value)
@@ -355,9 +374,28 @@ const assistantContextSummary = computed(() => {
   if (form.age) parts.push(`年龄 ${form.age} 岁`)
   if (form.heightCm) parts.push(`身高 ${form.heightCm} cm`)
   if (form.weightKg) parts.push(`体重 ${form.weightKg} kg`)
-  parts.push(`性别 ${form.gender === 'MALE' ? '男' : '女'}`)
+  if (form.gender) parts.push(`性别 ${form.gender === 'MALE' ? '男' : '女'}`)
   parts.push(`活动量 ${form.activityLevel === 'LOW' ? '低' : form.activityLevel === 'HIGH' ? '高' : '中'}`)
   return `当前解析会参考：${parts.join(' / ')}。如果有缺失项，可以先在下方补充后再重新生成建议。`
+})
+
+const parsedBodyText = computed(() => {
+  if (!assistantResult.value) return '待确认'
+  const parts = []
+  if (assistantResult.value.age) parts.push(`${assistantResult.value.age} 岁`)
+  if (assistantResult.value.heightCm) parts.push(`${assistantResult.value.heightCm} cm`)
+  if (assistantResult.value.weightKg) parts.push(`${assistantResult.value.weightKg} kg`)
+  if (assistantResult.value.gender) parts.push(assistantResult.value.gender === 'MALE' ? '男' : '女')
+  if (assistantResult.value.activityLevel) {
+    const labels = { LOW: '活动量低', MEDIUM: '活动量中', HIGH: '活动量高' }
+    parts.push(labels[assistantResult.value.activityLevel])
+  }
+  return parts.length ? parts.join(' / ') : '未提取到明确资料'
+})
+
+const parsedRestrictionText = computed(() => {
+  const restrictions = normalizeRestrictionList(assistantResult.value?.dietaryRestrictions)
+  return restrictions.length ? restrictions.map(restrictionText).join('、') : '无明确限制'
 })
 
 onMounted(() => {
@@ -375,6 +413,13 @@ onBeforeUnmount(() => {
   }
 })
 
+watch(() => assistantForm.rawText, () => {
+  if (assistantForm.rawText.trim() === assistantResultRawText.value) return
+  assistantResult.value = null
+  assistantResultRawText.value = ''
+  assistantMessage.value = ''
+})
+
 function setupSpeechRecognition() {
   if (typeof window === 'undefined') return
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -388,15 +433,26 @@ function setupSpeechRecognition() {
   speechRecognition.lang = 'zh-CN'
   speechRecognition.interimResults = true
   speechRecognition.continuous = false
+  speechRecognition.onstart = () => {
+    listening.value = true
+  }
   speechRecognition.onresult = event => {
-    assistantForm.rawText = Array.from(event.results)
+    const transcript = Array.from(event.results)
       .map(result => result[0]?.transcript || '')
       .join('')
       .trim()
+    assistantForm.rawText = [speechInputBeforeStart, transcript].filter(Boolean).join(' ').trim()
   }
-  speechRecognition.onerror = () => {
+  speechRecognition.onerror = event => {
     listening.value = false
-    assistantError.value = '当前浏览器暂时无法使用语音输入，请改用手动输入。'
+    const messages = {
+      'not-allowed': '麦克风权限未开启，请在浏览器的网站权限中允许麦克风。',
+      'service-not-allowed': '浏览器的语音识别服务当前不可用，请稍后重试。',
+      'audio-capture': '没有检测到可用麦克风，请检查设备后重试。',
+      network: '语音识别服务连接失败，请检查网络后重试。',
+      'no-speech': '没有听到清晰语音，请靠近麦克风后重试。',
+    }
+    assistantError.value = messages[event.error] || '语音输入未能完成，请稍后重试。'
   }
   speechRecognition.onend = () => {
     listening.value = false
@@ -421,6 +477,16 @@ function normalizeRestrictionList(list) {
 
 function restrictionText(code) {
   return restrictionOptions.find(item => item.code === code)?.label || code
+}
+
+function goalText(code) {
+  const labels = {
+    WEIGHT_LOSS: '减脂',
+    MUSCLE_GAIN: '增肌',
+    MAINTENANCE: '维持',
+    GENERAL_HEALTH: '综合健康',
+  }
+  return labels[code] || '综合健康'
 }
 
 function toggleRestriction(code) {
@@ -451,13 +517,13 @@ function applyProfile(profile, context = {}) {
 
   const heightCm = profile.heightCm ?? context.heightCm ?? ''
   const weightKg = profile.weightKg ?? context.weightKg ?? ''
-  const gender = (profile.gender ?? context.gender ?? 'FEMALE').toUpperCase()
+  const gender = (profile.gender ?? context.gender ?? '').toUpperCase()
   const activityLevel = (context.activityLevel ?? 'MEDIUM').toUpperCase()
 
   form.age = context.age === '' || context.age === null || context.age === undefined ? '' : String(context.age)
   form.heightCm = heightCm === '' || heightCm === null || heightCm === undefined ? '' : String(heightCm)
   form.weightKg = weightKg === '' || weightKg === null || weightKg === undefined ? '' : String(weightKg)
-  form.gender = gender === 'MALE' ? 'MALE' : 'FEMALE'
+  form.gender = ['MALE', 'FEMALE'].includes(gender) ? gender : ''
   form.activityLevel = ['LOW', 'MEDIUM', 'HIGH'].includes(activityLevel) ? activityLevel : 'MEDIUM'
 
   if (!currentPhone.value && profilePhone.value) {
@@ -526,30 +592,49 @@ async function useAssistant(apply) {
   assistantBusy.value = true
   assistantError.value = ''
   assistantMessage.value = ''
-  assistantSummary.value = ''
   success.value = ''
 
   try {
-    const parsed = await parseGoalByAssistant(currentUserId.value, {
-      rawText: assistantForm.rawText.trim(),
-      age: parseOptionalInt(form.age),
-      heightCm: parseOptionalInt(form.heightCm),
-      weightKg: parseOptionalFloat(form.weightKg),
-      gender: form.gender,
-      activityLevel: form.activityLevel,
-      applyToProfile: apply,
-    })
+    const rawText = assistantForm.rawText.trim()
+    const parsed = assistantResult.value && assistantResultRawText.value === rawText
+      ? assistantResult.value
+      : await parseGoalByAssistant(currentUserId.value, {
+          rawText,
+          age: parseOptionalInt(form.age),
+          heightCm: parseOptionalInt(form.heightCm),
+          weightKg: parseOptionalFloat(form.weightKg),
+          gender: form.gender || null,
+          activityLevel: form.activityLevel,
+          applyToProfile: false,
+        })
+
+    assistantResult.value = parsed
+    assistantResultRawText.value = rawText
+    if (!apply) return
 
     form.healthGoal = (parsed.healthGoal || form.healthGoal).toString()
     form.dailyCalorieTarget = Number(parsed.dailyCalorieTarget ?? form.dailyCalorieTarget)
     selectedRestrictions.value = normalizeRestrictionList(parsed.dietaryRestrictions)
-    assistantSummary.value = (parsed.summary || '').toString()
-    assistantMessage.value = apply ? '已应用到当前目标，你也可以继续微调后再保存。' : '建议已经生成，你可以先看看再决定是否采用。'
+    if (parsed.age !== null && parsed.age !== undefined) form.age = String(parsed.age)
+    if (parsed.heightCm !== null && parsed.heightCm !== undefined) form.heightCm = String(parsed.heightCm)
+    if (parsed.weightKg !== null && parsed.weightKg !== undefined) form.weightKg = String(parsed.weightKg)
+    if (['MALE', 'FEMALE'].includes(parsed.gender)) form.gender = parsed.gender
+    if (['LOW', 'MEDIUM', 'HIGH'].includes(parsed.activityLevel)) form.activityLevel = parsed.activityLevel
 
-    if (apply) {
-      persistProfileContext()
-      success.value = '助手建议已应用到当前目标设置。'
-    }
+    const profile = await updateUserProfile(currentUserId.value, {
+      nickname: profileNickname.value.trim() || null,
+      healthGoal: form.healthGoal,
+      dailyCalorieTarget: form.dailyCalorieTarget,
+      dietaryRestrictions: selectedRestrictions.value,
+      heightCm: parseOptionalInt(form.heightCm),
+      weightKg: parseOptionalFloat(form.weightKg),
+      gender: form.gender || null,
+    })
+    persistProfileContext()
+    applyProfile(profile, getStoredWebProfileContext(currentUserId.value))
+    assistantResult.value = null
+    assistantResultRawText.value = ''
+    assistantMessage.value = '目标资料已应用并保存。'
   } catch (e) {
     assistantError.value = e?.response?.data?.error || '生成目标建议失败，请稍后重试'
   } finally {
@@ -570,8 +655,13 @@ function toggleSpeech() {
     return
   }
 
-  speechRecognition.start()
-  listening.value = true
+  speechInputBeforeStart = assistantForm.rawText.trim()
+  try {
+    speechRecognition.start()
+  } catch {
+    listening.value = false
+    assistantError.value = '语音输入尚未就绪，请稍后重试。'
+  }
 }
 </script>
 
@@ -664,10 +754,35 @@ textarea {
   color: var(--success);
 }
 
-.summary-card p {
-  margin-top: 10px;
-  color: var(--muted);
-  line-height: 1.7;
+.assistant-result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.assistant-result-grid > div {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(183, 219, 197, 0.78);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.assistant-result-grid span,
+.assistant-result-grid strong {
+  display: block;
+}
+
+.assistant-result-grid span {
+  color: var(--muted-soft);
+  font-size: 0.8rem;
+}
+
+.assistant-result-grid strong {
+  margin-top: 5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .profile-actions {
@@ -804,6 +919,12 @@ textarea {
 
   .assistant-actions {
     display: grid;
+  }
+}
+
+@media (max-width: 560px) {
+  .assistant-result-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

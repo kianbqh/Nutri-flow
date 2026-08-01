@@ -14,6 +14,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
@@ -22,6 +23,8 @@ import httpx
 import numpy as np
 from PIL import Image
 from pydantic_settings import BaseSettings
+
+from app.trace_client import record_trace_event
 
 if TYPE_CHECKING:
     from app.graph import AgentState
@@ -39,6 +42,7 @@ class McpSettings(BaseSettings):
         / "nutri-ai-mcp/weights_by_category/foodseg103/stage7s1/stage7s1_tiny_img512_mask135_cls095_phaseA_12ep/best_stage7s1_tiny_img512_mask135_cls095_phaseA_12ep.pth"
     )
     mcp_input_size: str = "512"
+    advice_min_confidence: float = 0.65
 
     class Config:
         env_prefix = "NUTRI_"
@@ -254,6 +258,42 @@ async def _run_local_segmentation_fallback(
 
 
 async def call_mcp_segmentation(state: "AgentState") -> dict:
+    task_id = state["task_id"]
+    started_at = time.perf_counter()
+    await record_trace_event(
+        task_id,
+        "SEGMENTATION",
+        "RUNNING",
+        "正在调用食物实例分割模型",
+        service="inference",
+    )
+    try:
+        result = await _call_mcp_segmentation_impl(state)
+        segmentation = result.get("segmentation_result") or {}
+        failed = bool(segmentation.get("error"))
+        await record_trace_event(
+            task_id,
+            "SEGMENTATION",
+            "DEGRADED" if failed else "COMPLETED",
+            segmentation.get("error")
+            or f"分割完成，识别 {len(segmentation.get('detected_instances') or [])} 个区域",
+            service="inference",
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return result
+    except Exception:
+        await record_trace_event(
+            task_id,
+            "SEGMENTATION",
+            "FAILED",
+            "分割节点发生未处理异常",
+            service="inference",
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        raise
+
+
+async def _call_mcp_segmentation_impl(state: "AgentState") -> dict:
     """
     Invoke the segmentation endpoint on nutri-ai-mcp.
 
@@ -268,6 +308,7 @@ async def call_mcp_segmentation(state: "AgentState") -> dict:
     workflow_trace = list(state.get("workflow_trace") or [])
 
     logger.info("Calling segmentation service for task_id=%s", task_id)
+    started_at = time.perf_counter()
 
     payload = {
         "task_id": task_id,
@@ -288,7 +329,10 @@ async def call_mcp_segmentation(state: "AgentState") -> dict:
                 resp = await client.post(
                     f"{_settings.mcp_server_url}/v1/segment",
                     json=payload,
-                    headers={"Content-Type": "application/json"},
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-Nutri-Task-Id": task_id,
+                    },
                 )
                 resp.raise_for_status()
                 content = resp.json()
@@ -300,6 +344,14 @@ async def call_mcp_segmentation(state: "AgentState") -> dict:
                     "segmentation_preview_png_base64": content.get("segmentation_preview_png_base64"),
                     "model_version": content.get("model_version", "unknown"),
                 }
+                logger.info(
+                    "Segmentation completed task_id=%s duration_ms=%.1f inference_ms=%.1f items=%d model=%s",
+                    task_id,
+                    (time.perf_counter() - started_at) * 1000,
+                    _as_float(content.get("inference_time_ms"), 0.0),
+                    len(content.get("detected_items", []) or []),
+                    content.get("model_version", "unknown"),
+                )
                 break
         except Exception as exc:
             last_exc = exc
@@ -347,7 +399,12 @@ async def call_mcp_segmentation(state: "AgentState") -> dict:
     segmentation_result["detected_items"] = grouped_items
 
     labels: list[str] = []
+    uncertain_count = 0
     for item in detected_instances:
+        confidence = _as_float(item.get("confidence") or item.get("confidence_score"), 0.0)
+        if confidence < float(_settings.advice_min_confidence):
+            uncertain_count += 1
+            continue
         label = (
             item.get("label")
             or item.get("class_name")
@@ -360,11 +417,15 @@ async def call_mcp_segmentation(state: "AgentState") -> dict:
     workflow_mode = "FULL" if labels else "CALORIE_ONLY"
     if labels:
         workflow_trace.append(
-            f"call_mcp_segmentation: 已识别 {len(labels)} 个类别，进入完整分析流程"
+            f"call_mcp_segmentation: {len(labels)} 个可靠类别进入完整分析流程"
         )
     else:
         workflow_trace.append(
             "call_mcp_segmentation: 未识别到有效类别或分割失败，切换到仅热量估算流程"
+        )
+    if uncertain_count:
+        workflow_trace.append(
+            f"call_mcp_segmentation: {uncertain_count} 个低可信区域未用于类别建议"
         )
 
     return {

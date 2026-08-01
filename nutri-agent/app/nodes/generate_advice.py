@@ -16,6 +16,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.trace_client import record_trace_event
+
 if TYPE_CHECKING:
     from app.graph import AgentState
 else:
@@ -142,6 +144,7 @@ class LLMSettings(BaseSettings):
     llm_timeout_seconds: float = 40.0
     llm_max_output_tokens: int = 420
     llm_context_char_limit: int = 1200
+    advice_min_confidence: float = 0.65
 
     model_config = SettingsConfigDict(
         env_prefix="NUTRI_",
@@ -214,21 +217,20 @@ def _resolve_llm_timeout_seconds(provider: str, model: str) -> float:
 
 def _build_rule_based_advice(state: "AgentState", reason: str) -> str:
     seg = state.get("segmentation_result") or {}
-    items = seg.get("detected_items", [])
+    all_items = list(seg.get("detected_items", []) or [])
+    items = [item for item in all_items if _is_reliable_item(item)]
 
     labels = []
-    total_kcal = 0.0
+    total_kcal = _as_float(seg.get("total_calories_kcal"), 0.0)
     for item in items:
         name = item.get("display_name") or item.get("label") or item.get("class_name") or "未知食物"
         labels.append(str(name))
-        nutrition = item.get("nutrition") or {}
-        kcal = nutrition.get("calories_kcal") or item.get("calories") or 0.0
-        try:
-            total_kcal += float(kcal)
-        except Exception:
-            pass
+    if total_kcal <= 0:
+        for item in all_items:
+            nutrition = item.get("nutrition") or {}
+            total_kcal += _as_float(nutrition.get("calories_kcal") or item.get("calories"), 0.0)
 
-    labels_text = "、".join(labels[:4]) if labels else "未识别到明确菜品"
+    labels_text = "、".join(labels[:4]) if labels else "没有达到可信度阈值的明确菜品"
     kcal_text = f"约 {total_kcal:.1f} 千卡" if total_kcal > 0 else "热量估算中"
 
     goal = (state.get("user_context") or {}).get("healthGoal", "GENERAL_HEALTH")
@@ -302,6 +304,14 @@ def _item_label(item: dict) -> str:
     )
 
 
+def _item_confidence(item: dict) -> float:
+    return _as_float(item.get("confidence") or item.get("confidence_score"), 0.0)
+
+
+def _is_reliable_item(item: dict) -> bool:
+    return _item_confidence(item) >= float(_settings.advice_min_confidence)
+
+
 def _item_nutrition(item: dict) -> dict[str, float]:
     nutrition = item.get("nutrition") or {}
     return {
@@ -337,7 +347,9 @@ def _meal_ratio_bounds(daily_target: float, meal_type: str) -> tuple[float, floa
 
 def _build_meal_metrics(segmentation_result: dict | None) -> dict[str, object]:
     seg = segmentation_result or {}
-    items = list(seg.get("detected_items") or [])
+    all_items = list(seg.get("detected_items") or [])
+    items = [item for item in all_items if _is_reliable_item(item)]
+    uncertain_items = [item for item in all_items if not _is_reliable_item(item)]
     labels = [_item_label(item) for item in items]
     totals = {
         "calories_kcal": _as_float(seg.get("total_calories_kcal"), 0.0),
@@ -348,19 +360,22 @@ def _build_meal_metrics(segmentation_result: dict | None) -> dict[str, object]:
         "weight_g": 0.0,
     }
     top_items: list[tuple[str, float]] = []
+    item_calories_total = 0.0
 
-    for item in items:
+    for item in all_items:
         nutrition = _item_nutrition(item)
         weight_g = _as_float(item.get("estimated_weight_g") or item.get("weight_g"), 0.0)
+        item_calories_total += nutrition["calories_kcal"]
         totals["protein_g"] += nutrition["protein_g"]
         totals["fat_g"] += nutrition["fat_g"]
         totals["carbs_g"] += nutrition["carbs_g"]
         totals["fiber_g"] += nutrition["fiber_g"]
         totals["weight_g"] += weight_g
-        top_items.append((_item_label(item), nutrition["calories_kcal"]))
+        if _is_reliable_item(item):
+            top_items.append((_item_label(item), nutrition["calories_kcal"]))
 
     if totals["calories_kcal"] <= 0:
-        totals["calories_kcal"] = sum(calories for _, calories in top_items)
+        totals["calories_kcal"] = item_calories_total
 
     top_items.sort(key=lambda pair: pair[1], reverse=True)
     category_hits = _detect_categories(labels)
@@ -381,6 +396,7 @@ def _build_meal_metrics(segmentation_result: dict | None) -> dict[str, object]:
 
     return {
         "items": items,
+        "uncertain_items": uncertain_items,
         "labels": labels,
         "totals": totals,
         "top_items": top_items[:3],
@@ -400,12 +416,15 @@ def _build_current_meal_profile(state: "AgentState") -> str:
     totals = metrics["totals"]
     top_items = list(metrics["top_items"])
     if not labels:
-        return "- 当前餐次仅有有限识别结果，无法建立稳定的餐食结构画像。"
+        return "- 当前餐次没有达到可信度阈值的类别，无法建立稳定的餐食结构画像。"
 
     lines = [
         f"- 餐次：{_meal_type_display(_normalise_text(state.get('meal_type') or ''))}",
         f"- 识别到 {len(labels)} 类食物：{'、'.join(labels[:6])}",
     ]
+    uncertain_items = list(metrics["uncertain_items"])
+    if uncertain_items:
+        lines.append(f"- 另有 {len(uncertain_items)} 个低可信类别，仅计入粗略估算，不用于点名建议")
 
     total_kcal = float(totals["calories_kcal"])
     if total_kcal > 0:
@@ -688,6 +707,29 @@ def _inject_personalization_basis(advice_report: str, personalization_basis: str
         return basis
     return f"{basis}\n\n{report}"
 
+
+def _guard_low_confidence_mentions(advice_report: str, segmentation_result: dict | None) -> str:
+    report = (advice_report or "").strip()
+    metrics = _build_meal_metrics(segmentation_result)
+    reliable_labels = {_item_label(item) for item in metrics["items"]}
+    uncertain_labels = {
+        _item_label(item)
+        for item in metrics["uncertain_items"]
+        if _item_label(item) not in reliable_labels
+    }
+    replaced = False
+    for label in sorted(uncertain_labels, key=len, reverse=True):
+        if label and label in report:
+            report = report.replace(label, "待确认类别")
+            replaced = True
+    if uncertain_labels:
+        note = "识别提示：低可信类别仅供核对，不作为点名食物建议的依据。"
+        if note not in report:
+            report = f"{report}\n\n{note}".strip()
+    if replaced:
+        logger.info("Removed low-confidence food labels from generated advice")
+    return report
+
 ADVICE_PROMPT = ChatPromptTemplate.from_messages([
     (
         "system",
@@ -697,6 +739,7 @@ ADVICE_PROMPT = ChatPromptTemplate.from_messages([
             "避免医疗诊断语气，避免泛泛而谈，避免重复说‘注意均衡饮食’却不给具体动作。"
             "每个部分都尽量点名当前餐次中的具体食物、热量或营养指标；"
             "如果信息不足，要明确指出不确定性并给保守建议。"
+            "置信度低于 65% 的类别只是待确认线索，禁止根据它点名食物、判断饮食冲突或提出类别特定建议。"
             "若历史记录存在，请至少输出 1 条基于历史模式的提醒或调整。"
             "若提供了年龄、活动量、身高、体重、性别或BMI线索，请至少输出 1-2 条与这些因素相关的分析理由。"
             "输出严格按以下结构：\n"
@@ -748,11 +791,43 @@ def _build_segmentation_summary(segmentation_result: dict | None) -> str:
         )
         count = int(item.get("instance_count") or 1)
         count_text = f"，{count} 份实例" if count > 1 else ""
-        lines.append(f"- {label} ({macro_text}, {weight_str}, confidence: {_as_float(conf):.0%}{count_text})")
+        confidence = _as_float(conf)
+        reliability = "可靠类别" if confidence >= float(_settings.advice_min_confidence) else "低可信待确认，禁止据此给具体建议"
+        lines.append(f"- {label} ({macro_text}, {weight_str}, confidence: {confidence:.0%}, {reliability}{count_text})")
     return "\n".join(lines)
 
 
 async def generate_advice(state: "AgentState") -> dict:
+    task_id = state["task_id"]
+    started_at = time.perf_counter()
+    await record_trace_event(
+        task_id,
+        "ADVICE",
+        "RUNNING",
+        "正在结合识别结果与用户目标生成建议",
+    )
+    try:
+        result = await _generate_advice_impl(state)
+        await record_trace_event(
+            task_id,
+            "ADVICE",
+            "COMPLETED",
+            "营养建议已生成",
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        return result
+    except Exception:
+        await record_trace_event(
+            task_id,
+            "ADVICE",
+            "FAILED",
+            "营养建议节点发生未处理异常",
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
+        raise
+
+
+async def _generate_advice_impl(state: "AgentState") -> dict:
     """
     Call the LLM to generate a personalised dietary advice report.
     """
@@ -796,7 +871,10 @@ async def generate_advice(state: "AgentState") -> dict:
         )
         workflow_trace.append("generate_advice: CALORIE_ONLY fallback advice generated")
         return {
-            "advice_report": _inject_personalization_basis(fallback, personalization_basis),
+            "advice_report": _guard_low_confidence_mentions(
+                _inject_personalization_basis(fallback, personalization_basis),
+                state.get("segmentation_result"),
+            ),
             "workflow_trace": workflow_trace,
         }
 
@@ -808,7 +886,10 @@ async def generate_advice(state: "AgentState") -> dict:
             f"generate_advice: LLM unavailable ({provider}), rule-based advice generated"
         )
         return {
-            "advice_report": _inject_personalization_basis(advice_report, personalization_basis),
+            "advice_report": _guard_low_confidence_mentions(
+                _inject_personalization_basis(advice_report, personalization_basis),
+                state.get("segmentation_result"),
+            ),
             "workflow_trace": workflow_trace,
         }
 
@@ -850,4 +931,8 @@ async def generate_advice(state: "AgentState") -> dict:
         )
 
     advice_report = _inject_personalization_basis(advice_report, personalization_basis)
+    advice_report = _guard_low_confidence_mentions(
+        advice_report,
+        state.get("segmentation_result"),
+    )
     return {"advice_report": advice_report, "workflow_trace": workflow_trace}

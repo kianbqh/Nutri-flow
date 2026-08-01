@@ -20,12 +20,15 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
+from urllib.parse import urlsplit
 
 import aio_pika
 from aio_pika.abc import AbstractIncomingMessage
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.graph import nutri_graph, AgentState
+from app.trace_client import record_trace_event
 
 logger = logging.getLogger(__name__)
 
@@ -110,9 +113,16 @@ async def _handle_message(
         return
 
     task_id: str = body.get("taskId", "unknown")
+    started_at = time.perf_counter()
     logger.info(
         "Received analysis task: task_id=%s (attempt %d/%d)",
         task_id, retry_count + 1, MAX_RETRIES,
+    )
+    await record_trace_event(
+        task_id,
+        "AGENT",
+        "COMPLETED",
+        f"Agent 已接收任务，第 {retry_count + 1} 次处理",
     )
 
     initial_state: AgentState = {
@@ -136,14 +146,22 @@ async def _handle_message(
             timeout=_settings.agent_task_timeout_sec,
         )
         logger.info(
-            "Graph completed for task_id=%s status=%s",
+            "Graph completed for task_id=%s status=%s duration_ms=%.1f",
             task_id,
             "OK" if final_state.get("advice_report") else "NO_ADVICE",
+            (time.perf_counter() - started_at) * 1000,
         )
         await message.ack()
 
     except Exception as exc:
         logger.exception("Graph execution failed for task_id=%s: %s", task_id, exc)
+        await record_trace_event(
+            task_id,
+            "AGENT",
+            "FAILED",
+            "Agent 工作流执行失败",
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+        )
 
         if retry_count + 1 >= MAX_RETRIES:
             logger.error(
@@ -183,7 +201,12 @@ async def _handle_message(
 
 async def start_consumer() -> None:
     """Connect to RabbitMQ and start consuming the task queue indefinitely."""
-    logger.info("Connecting to RabbitMQ: %s", _settings.rabbitmq_url)
+    rabbitmq_endpoint = urlsplit(_settings.rabbitmq_url)
+    logger.info(
+        "Connecting to RabbitMQ host=%s port=%s",
+        rabbitmq_endpoint.hostname or "unknown",
+        rabbitmq_endpoint.port or 5672,
+    )
 
     connection = await aio_pika.connect_robust(
         _settings.rabbitmq_url,

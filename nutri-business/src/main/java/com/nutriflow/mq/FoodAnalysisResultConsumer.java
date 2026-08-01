@@ -3,6 +3,7 @@ package com.nutriflow.mq;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nutriflow.model.DietLog;
 import com.nutriflow.repository.DietLogRepository;
+import com.nutriflow.service.TaskTraceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.Message;
@@ -27,6 +28,7 @@ public class FoodAnalysisResultConsumer {
 
     private final DietLogRepository dietLogRepository;
     private final ObjectMapper objectMapper;
+    private final TaskTraceService taskTraceService;
 
     /**
      * Handle an inbound analysis-result message from nutri-agent.
@@ -61,6 +63,15 @@ public class FoodAnalysisResultConsumer {
             dietLogRepository.findByTaskId(taskId).ifPresentOrElse(log_ -> {
                 log_.setAnalysisResult(payloadJson);
                 dietLogRepository.save(log_);
+                String status = node.path("status").asText("COMPLETED");
+                taskTraceService.recordEvent(
+                        finalTaskId,
+                        "DATABASE",
+                        "FAILED".equals(status) ? "FAILED" : "COMPLETED",
+                        "business",
+                        "分析结果已写入 MySQL",
+                        null
+                );
                 log.info("Diet log updated for task_id={}", finalTaskId);
             }, () -> log.warn("No DietLog found for task_id={} – result discarded", finalTaskId));
 
